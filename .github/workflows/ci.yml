@@ -1,0 +1,38 @@
+name: CI
+
+# Runs the quality gates on every PR (FR-012). `main` is protected so a failing
+# gate blocks merge and direct pushes are disallowed (FR-013 — configured in
+# repository settings; see README).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  quality-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Derive Nx affected base/head
+        uses: nrwl/nx-set-shas@v4
+
+      - name: Lint + unit/integration tests (affected)
+        run: npx nx affected -t lint test --base=$NX_BASE --head=$NX_HEAD
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npx nx e2e frontend-e2e

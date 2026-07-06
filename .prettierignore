@@ -1,0 +1,9 @@
+node_modules
+dist
+build
+coverage
+.nx
+cdk.out
+dev-dist
+package-lock.json
+**/src-tauri/target

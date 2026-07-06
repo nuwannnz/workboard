@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out-tsc/
+tmp/
+
+# Nx
+.nx/cache
+.nx/workspace-data
+
+# Vite / frontend
+apps/frontend/dev-dist/
+
+# Tauri / Rust
+src-tauri/target/
+apps/frontend/src-tauri/target/
+
+# AWS CDK
+cdk.out/
+apps/infra/cdk.out/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*

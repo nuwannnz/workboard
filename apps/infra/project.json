@@ -1,0 +1,41 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "infra",
+  "projectType": "application",
+  "sourceRoot": "apps/infra",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p apps/infra/tsconfig.app.json"
+      }
+    },
+    "synth": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cdk synth",
+        "cwd": "apps/infra"
+      }
+    },
+    "deploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cdk deploy --all --require-approval never",
+        "cwd": "apps/infra"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint apps/infra/bin apps/infra/lib --max-warnings=0"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --root apps/infra"
+      }
+    }
+  },
+  "tags": ["scope:infra"]
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "frontend-e2e",
+  "projectType": "application",
+  "sourceRoot": "apps/frontend-e2e/src",
+  "implicitDependencies": ["frontend"],
+  "targets": {
+    "e2e": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "playwright test",
+        "cwd": "apps/frontend-e2e"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint apps/frontend-e2e/src --max-warnings=0"
+      }
+    }
+  },
+  "tags": ["scope:e2e"]
+}
