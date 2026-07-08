@@ -12,7 +12,11 @@
     "libs/*"
   ],
   "scripts": {
-    "prepare": "husky || true"
+    "prepare": "husky || true",
+    "secret-scan": "node tools/scripts/secret-scan.mjs",
+    "local": "node tools/scripts/dev-local.mjs",
+    "local:down": "docker compose -f apps/backend/docker-compose.yml down",
+    "deploy": "node tools/scripts/deploy.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",
@@ -47,11 +51,15 @@
     "vitest": "^2.1.4"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.687.0",
     "@aws-sdk/client-dynamodb": "^3.687.0",
     "@aws-sdk/lib-dynamodb": "^3.687.0",
     "@codegenie/serverless-express": "^4.16.0",
     "@tauri-apps/api": "^2.1.0",
+    "@tauri-apps/plugin-store": "^2.1.0",
+    "amazon-cognito-identity-js": "^6.3.12",
     "aws-cdk-lib": "^2.167.0",
+    "aws-jwt-verify": "^4.0.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "constructs": "^10.4.2",
@@ -59,6 +67,7 @@
     "lucide-react": "^0.454.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
     "tailwind-merge": "^2.5.4",
     "zod": "^3.23.8"
   }

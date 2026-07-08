@@ -7,3 +7,4 @@ export * from './schemas/task';
 export * from './schemas/project';
 export * from './schemas/note';
 export * from './schemas/user';
+export * from './schemas/auth';

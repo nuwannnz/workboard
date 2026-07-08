@@ -17,7 +17,7 @@ export class WorkboardStack extends Stack {
 
     const data = new DataStack(this, 'Data');
     const auth = new AuthStack(this, 'Auth');
-    const api = new ApiStack(this, 'Api', { table: data.table });
+    const api = new ApiStack(this, 'Api', { table: data.table, userPool: auth.userPool });
     const web = new WebStack(this, 'Web');
 
     new CfnOutput(this, 'ApiBaseUrl', { value: api.restApi.url });

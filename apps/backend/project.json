@@ -8,7 +8,7 @@
       "executor": "nx:run-commands",
       "outputs": ["{projectRoot}/dist"],
       "options": {
-        "command": "tsc -p apps/backend/tsconfig.app.json"
+        "command": "tsc -b apps/backend/tsconfig.app.json"
       }
     },
     "serve": {

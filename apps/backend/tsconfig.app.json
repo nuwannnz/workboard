@@ -7,6 +7,7 @@
     "moduleResolution": "Bundler",
     "types": ["node"]
   },
+  "references": [{ "path": "../../libs/shared/tsconfig.lib.json" }],
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts"]
 }
