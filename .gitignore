@@ -32,6 +32,12 @@ playwright/.cache/
 .env.*
 !.env.example
 
+# Cognito Local emulator state (seeded pool/client + local users)
+.cognito/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
 # Editor / OS
 .DS_Store
 Thumbs.db

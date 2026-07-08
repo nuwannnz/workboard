@@ -15,6 +15,8 @@ export default {
     extend: {
       colors: {
         border: 'hsl(214 32% 91%)',
+        input: 'hsl(214 32% 91%)',
+        ring: 'hsl(222 47% 11%)',
         background: 'hsl(0 0% 100%)',
         foreground: 'hsl(222 47% 11%)',
         muted: 'hsl(210 40% 96%)',
@@ -23,6 +25,10 @@ export default {
         'primary-foreground': 'hsl(210 40% 98%)',
         accent: 'hsl(210 40% 96%)',
         'accent-foreground': 'hsl(222 47% 11%)',
+        card: 'hsl(0 0% 100%)',
+        'card-foreground': 'hsl(222 47% 11%)',
+        destructive: 'hsl(0 84% 60%)',
+        'destructive-foreground': 'hsl(210 40% 98%)',
       },
     },
   },

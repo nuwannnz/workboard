@@ -4,6 +4,9 @@
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Secure token persistence for the shared auth code's desktop token store
+        // (frontend src/platform/tauri.ts).
+        .plugin(tauri_plugin_store::Builder::new().build())
         .run(tauri::generate_context!())
         .expect("error while running WorkBoard");
 }

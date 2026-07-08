@@ -1,6 +1,8 @@
-# DynamoDB Local for backend/health development (T030).
-# Usage: docker compose -f apps/backend/docker-compose.yml up -d
+# Local backing services for fully-local development (no AWS account required).
+# Started automatically by `npm run local`; also usable directly:
+#   docker compose -f apps/backend/docker-compose.yml up -d
 services:
+  # DynamoDB Local — holds the account-profile item locally (T030).
   dynamodb-local:
     image: amazon/dynamodb-local:latest
     container_name: workboard-dynamodb-local
@@ -12,3 +14,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Cognito Local — a no-AWS emulator of the Cognito user pool so sign-up / verify /
+  # login and backend token verification all work fully offline. Note: it supports only
+  # USER_PASSWORD_AUTH (no SRP) and cannot send email — the verification code is fixed to
+  # CODE below and also printed to this container's logs.
+  cognito-local:
+    image: jagregory/cognito-local:latest
+    container_name: workboard-cognito-local
+    ports:
+      - '9229:9229'
+    environment:
+      # Deterministic verification code for local sign-up (documented in README).
+      - CODE=123456
+    volumes:
+      # Persists the seeded pool/client + users across restarts.
+      - ./.cognito:/app/.cognito

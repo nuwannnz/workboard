@@ -31,6 +31,12 @@ jobs:
       - name: Lint + unit/integration tests (affected)
         run: npx nx affected -t lint test --base=$NX_BASE --head=$NX_HEAD
 
+      - name: Build frontend bundle
+        run: npx nx build frontend
+
+      - name: Secret / bundle scan (SC-008)
+        run: npm run secret-scan
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
