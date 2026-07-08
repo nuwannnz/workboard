@@ -13,8 +13,15 @@ function buildApp(service: AuthService) {
   const controller = new AuthController(service);
   const app = express();
   app.use(express.json());
-  // The public resend route needs no auth; pass a no-op authenticate for the protected one.
-  app.use(authRoutes((_req, _res, next) => next(), controller));
+  // The public resend route needs no auth; pass no-op authenticate + resolve-identity for
+  // the protected one.
+  app.use(
+    authRoutes(
+      (_req, _res, next) => next(),
+      (_req, _res, next) => next(),
+      controller,
+    ),
+  );
   return app;
 }
 

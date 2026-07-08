@@ -11,6 +11,10 @@ function authValue(status: AuthStatus): AuthApi {
   return {
     status,
     user: null,
+    apiClient: {
+      request: async () => ({}) as unknown as Response,
+      get: async () => ({}) as unknown as Response,
+    },
     register: async () => ({ ok: true }),
     verify: async () => ({ ok: true }),
     resendVerification: async () => undefined,

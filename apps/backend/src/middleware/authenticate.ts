@@ -9,6 +9,9 @@ export interface AuthContext {
   sub: string;
   email: string;
   username: string;
+  /** App-level owner id (UUID) resolved from `sub` by the `resolve-identity` middleware.
+   * Present only after that middleware runs; feature controllers read only this. */
+  userId?: string;
 }
 
 // Augment Express' Request so handlers can read `req.auth` with types.

@@ -5,14 +5,17 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 
 /**
- * GET /me (contracts/auth-api.md): 200 `{ id, email }` (validated by meResponseSchema)
- * with valid claims; 401 when the authenticate middleware rejects.
+ * GET /me (contracts/auth-api.md): 200 `{ id, email }` — the **app User** id (resolved
+ * `userId`, never `cognitoSub`) — validated by meResponseSchema with valid claims; 401 when
+ * the authenticate middleware rejects.
  */
+const passThroughResolve: RequestHandler = (_req, _res, next) => next();
+
 function buildApp(authenticate: RequestHandler, service: AuthService) {
   const controller = new AuthController(service);
   const app = express();
   app.use(express.json());
-  app.use(authRoutes(authenticate, controller));
+  app.use(authRoutes(authenticate, passThroughResolve, controller));
   return app;
 }
 
@@ -30,9 +33,13 @@ async function getMe(app: express.Express) {
 }
 
 describe('GET /me', () => {
-  it('returns 200 { id, email } for an authenticated request', async () => {
+  it('returns 200 { id, email } (app userId, never cognitoSub) for an authenticated request', async () => {
     const service = new AuthService();
-    vi.spyOn(service, 'getProfile').mockResolvedValue({ id: 'sub-1', email: 'user@example.com' });
+    // The service returns the resolved app userId (a UUID), not the Cognito sub.
+    vi.spyOn(service, 'getProfile').mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'user@example.com',
+    });
 
     // Authenticate middleware that injects verified claims (as the gateway would).
     const authenticate: RequestHandler = (req, _res, next) => {
@@ -42,7 +49,9 @@ describe('GET /me', () => {
 
     const { status, body } = await getMe(buildApp(authenticate, service));
     expect(status).toBe(200);
-    expect(body).toEqual({ id: 'sub-1', email: 'user@example.com' });
+    expect(body).toEqual({ id: '11111111-1111-4111-8111-111111111111', email: 'user@example.com' });
+    expect(body).not.toHaveProperty('cognitoSub');
+    expect(body.id).not.toBe('sub-1');
   });
 
   it('returns 401 when the authenticate middleware rejects', async () => {

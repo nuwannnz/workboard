@@ -10,6 +10,10 @@ function authValue(overrides: Partial<AuthApi> = {}): AuthApi {
   return {
     status: 'authenticated',
     user: { id: 'sub-1', email: 'user@example.com' },
+    apiClient: {
+      request: async () => ({}) as unknown as Response,
+      get: async () => ({}) as unknown as Response,
+    },
     register: async () => ({ ok: true }),
     verify: async () => ({ ok: true }),
     resendVerification: async () => undefined,

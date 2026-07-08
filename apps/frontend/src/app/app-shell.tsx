@@ -1,18 +1,17 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Outlet } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { navItems } from './nav-items';
 import { Button } from '../components/ui/button';
-import { getPlatform } from '../platform';
 import { useAuth } from '../auth/use-auth';
 
 /**
- * Responsive app shell. A left sidebar lists the Week / Projects / Notes / Overview
- * placeholders from the shared design system, plus a Log Out action (T043). The same
- * component renders in the browser PWA and the Tauri desktop window (Principle II).
+ * Responsive app shell. A left sidebar lists the Week / Projects / Notes / Overview areas
+ * from the shared design system, plus a Log Out action. Feature routes render in the main
+ * area via `<Outlet/>`. The same component renders in the browser PWA and the Tauri desktop
+ * window (Principle II).
  */
 export function AppShell() {
-  const platform = getPlatform();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const navigate = useNavigate();
 
   async function onLogout() {
@@ -31,12 +30,14 @@ export function AppShell() {
           <span className="sm:hidden">WB</span>
         </div>
         <nav className="flex flex-col gap-1">
-          {navItems.map(({ id, label, icon: Icon }) => (
+          {navItems.map(({ id, label, icon: Icon, to }) => (
             <Button
               key={id}
               variant="ghost"
               className="w-full justify-start gap-3"
               data-testid={`nav-${id}`}
+              disabled={!to}
+              onClick={to ? () => navigate(to) : undefined}
             >
               <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span className="hidden sm:inline">{label}</span>
@@ -57,17 +58,8 @@ export function AppShell() {
         </div>
       </aside>
 
-      <main className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-        <h1 className="text-2xl font-semibold">WorkBoard</h1>
-        {user ? (
-          <p className="text-muted-foreground">
-            Signed in as <strong>{user.email}</strong> on the{' '}
-            <strong>{platform.name}</strong> platform.
-          </p>
-        ) : null}
-        <p className="max-w-md text-sm text-muted-foreground">
-          Select an area in the sidebar. Feature behavior arrives in later stages.
-        </p>
+      <main className="flex flex-1 flex-col overflow-hidden">
+        <Outlet />
       </main>
     </div>
   );
