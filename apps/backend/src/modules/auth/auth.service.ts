@@ -5,7 +5,7 @@ import {
 import type { MeResponse } from '@workboard/shared';
 import type { AuthContext } from '../../middleware/authenticate';
 import { loadConfig } from '../../shared/config';
-import { ProfileRepository } from './profile.repository';
+import { IdentityService, identityService } from './identity.service';
 
 /**
  * True when an error represents the identity provider being unreachable (no HTTP response
@@ -18,26 +18,27 @@ function isProviderUnreachable(err: unknown): boolean {
 }
 
 /**
- * Auth business logic (Principle I). Orchestrates the profile bootstrap for the
- * identity boundary (`GET /me`) and the resend-verification helper. No HTTP or SDK
- * concerns leak in — routes/controllers stay thin, persistence stays in the repository.
+ * Auth business logic (Principle I). Orchestrates the identity boundary (`GET /me`) and the
+ * resend-verification helper. No HTTP or SDK concerns leak in — routes/controllers stay
+ * thin, persistence stays in the repository.
  */
 export class AuthService {
   constructor(
-    private readonly profiles: ProfileRepository = new ProfileRepository(),
+    private readonly identity: IdentityService = identityService,
     private readonly idp: CognitoIdentityProviderClient = new CognitoIdentityProviderClient({
       region: loadConfig().region,
     }),
   ) {}
 
   /**
-   * Returns the authenticated account profile, lazily bootstrapping it on first access
-   * (FR-010). Ownership is derived from the verified `sub`; the email is copied from the
-   * token claims. The controller validates the shape against `meResponseSchema`.
+   * Returns the authenticated **app User** `{ id, email }` — the resolved `userId` (never
+   * the Cognito `sub`, never `cognitoSub`), FR-014. When the request already ran through
+   * `resolve-identity` the id is on `req.auth`; otherwise it is resolved (get-or-bootstrap)
+   * here. The controller validates the shape against `meResponseSchema`.
    */
   async getProfile(auth: AuthContext): Promise<MeResponse> {
-    const profile = await this.profiles.getOrCreateProfile(auth.sub, auth.email);
-    return { id: profile.id, email: profile.email };
+    const userId = auth.userId ?? (await this.identity.resolveUserId(auth.sub, auth.email));
+    return { id: userId, email: auth.email };
   }
 
   /**

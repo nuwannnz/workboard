@@ -23,7 +23,10 @@ export interface ApiClient {
 }
 
 export function createApiClient(deps: ApiClientDeps): ApiClient {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
+  // Base URL from build-time config. In local dev, fall back to the Vite `/api` proxy so a
+  // missing/empty `.env.local` var can't silently send API calls to the SPA's own origin
+  // (which returns index.html, not the backend). In production the CDK always sets it.
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '/api' : '');
 
   const doFetch = (path: string, token: string | null, init?: RequestInit): Promise<Response> => {
     const headers = new Headers(init?.headers);

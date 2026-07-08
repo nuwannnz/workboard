@@ -1,7 +1,9 @@
 import express, { type Express } from 'express';
 import { healthRoutes } from './routes/health.routes';
 import { authRoutes } from './modules/auth/auth.routes';
+import { tasksRoutes } from './modules/tasks/tasks.routes';
 import { authenticate } from './middleware/authenticate';
+import { resolveIdentity } from './middleware/resolve-identity';
 
 /**
  * Express app factory (FR-008). Both entry points — the local server (`main.ts`)
@@ -15,9 +17,14 @@ export function createApp(): Express {
   // Public health probe.
   app.use(healthRoutes());
 
-  // Auth module: protected `GET /me` (behind the authenticate middleware) and the
+  // Auth module: protected `GET /me` (behind authenticate + resolve-identity) and the
   // public `POST /auth/resend-verification` (FR-008, FR-009).
-  app.use(authRoutes(authenticate));
+  app.use(authRoutes(authenticate, resolveIdentity));
+
+  // Tasks module: the Week board's REST surface, all behind authenticate +
+  // resolve-identity so controllers read only the resolved app `userId` (Stage 2's
+  // protected proxy already routes `/tasks/*` — no new infra).
+  app.use(tasksRoutes(authenticate, resolveIdentity));
 
   return app;
 }

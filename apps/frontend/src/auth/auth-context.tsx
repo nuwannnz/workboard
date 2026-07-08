@@ -11,6 +11,7 @@ import { registerRequestSchema, verifyRequestSchema, loginRequestSchema } from '
 import type { TokenBundle, TokenStore } from '../platform/platform';
 import { getPlatform } from '../platform';
 import { CognitoClient } from './cognito-client';
+import { createApiClient, type ApiClient } from './api-client';
 
 /** Maps a Zod parse error to `{ field: message }` for field-level form feedback. */
 function toFieldErrors(error: { issues: { path: (string | number)[]; message: string }[] }): Record<
@@ -36,6 +37,9 @@ export interface AuthUser {
 export interface AuthApi {
   status: AuthStatus;
   user: AuthUser | null;
+  /** Authenticated fetch wrapper for protected feature calls (attaches the id token,
+   * refreshes once on 401, else drives logout). Consumed by feature clients (Week). */
+  apiClient: ApiClient;
 
   register(input: {
     email: string;
@@ -135,6 +139,37 @@ export function AuthProvider({ children, cognito, tokenStore }: AuthProviderProp
     setUser(null);
     setStatus('unauthenticated');
   }, [store]);
+
+  /** Silent token refresh used by the API client on a 401 (contracts/auth-client). */
+  const refreshSession = useCallback(async (): Promise<boolean> => {
+    const tokens = await store.load().catch(() => null);
+    if (!tokens) return false;
+    const username = usernameFromToken(tokens.idToken);
+    if (!username) return false;
+    try {
+      const refreshed = await client.refreshSession(tokens.refreshToken, username);
+      return await applySession(refreshed);
+    } catch {
+      return false;
+    }
+  }, [store, client, applySession]);
+
+  /**
+   * Authenticated fetch wrapper shared by every protected feature call. It reads the live
+   * id token, retries once through `refreshSession` on a 401, and on irrecoverable auth
+   * loss clears the session (routing to `/login` via the guards). Stable across renders.
+   */
+  const apiClient = useMemo(
+    () =>
+      createApiClient({
+        getIdToken: () => idTokenRef.current,
+        refresh: refreshSession,
+        onAuthLost: () => {
+          void clearSession();
+        },
+      }),
+    [refreshSession, clearSession],
+  );
 
   // Rehydrate the session on mount (T034, FR-006): load persisted tokens; if the id token
   // is still valid, adopt it; if it is expired but a refresh token is present, silently
@@ -250,6 +285,7 @@ export function AuthProvider({ children, cognito, tokenStore }: AuthProviderProp
   const value: AuthApi = {
     status,
     user,
+    apiClient,
     register,
     verify,
     resendVerification,

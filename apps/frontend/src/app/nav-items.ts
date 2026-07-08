@@ -4,15 +4,16 @@ export interface NavItem {
   id: string;
   label: string;
   icon: LucideIcon;
+  /** Route to navigate to when selected. Areas without a live route (later stages) omit it. */
+  to?: string;
 }
 
 /**
- * The four Stage 1 navigation areas. These are placeholders — no feature
- * behavior is wired (FR-018); they exist to prove the shared shell renders
- * identically on PWA and desktop.
+ * The four navigation areas. Stage 3 wires **Week** to its route (`/week`); the remaining
+ * areas stay placeholders (no route yet) until their stages land.
  */
 export const navItems: NavItem[] = [
-  { id: 'week', label: 'Week', icon: CalendarDays },
+  { id: 'week', label: 'Week', icon: CalendarDays, to: '/week' },
   { id: 'projects', label: 'Projects', icon: FolderKanban },
   { id: 'notes', label: 'Notes', icon: NotebookPen },
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },

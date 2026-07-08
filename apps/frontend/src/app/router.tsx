@@ -7,6 +7,7 @@ import { useAuth } from '../auth/use-auth';
 import { LoginScreen } from '../auth/screens/login-screen';
 import { RegisterScreen } from '../auth/screens/register-screen';
 import { VerifyScreen } from '../auth/screens/verify-screen';
+import { WeekPage } from '../week/week-page';
 
 /**
  * Public auth route wrapper: authenticated users visiting `/login|/register|/verify` are
@@ -60,15 +61,20 @@ export function AppRoutes() {
           </PublicOnly>
         }
       />
-      {/* Everything else is the protected shell (+ future feature routes). */}
+      {/* Protected shell with nested feature routes (rendered via the shell's <Outlet/>). */}
       <Route
-        path="/*"
         element={
           <RequireAuth>
             <AppShell />
           </RequireAuth>
         }
-      />
+      >
+        {/* Week is the protected landing surface (contracts/tasks-client-contract.md). */}
+        <Route path="/" element={<WeekPage />} />
+        <Route path="/week" element={<WeekPage />} />
+        {/* Unknown protected paths fall back to the Week board. */}
+        <Route path="*" element={<Navigate to="/week" replace />} />
+      </Route>
     </Routes>
   );
 }
