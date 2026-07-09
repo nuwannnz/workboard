@@ -77,6 +77,61 @@ export async function openWeekBoard(page: Page): Promise<string> {
 }
 
 /**
+ * Establish an authenticated session and open the Projects area (`/projects`). Returns the
+ * account's email. Mirrors {@link openWeekBoard} but lands on the Projects surface (Stage 4).
+ */
+export async function openProjects(page: Page): Promise<string> {
+  const email = E2E_LOCAL ? uniqueEmail('proj') : (process.env.E2E_TEST_EMAIL as string);
+  if (E2E_LOCAL) {
+    await registerAndLogin(page, email);
+  } else {
+    await login(page, email);
+  }
+  await page.getByTestId('nav-projects').click();
+  await expect(page).toHaveURL(/\/projects/);
+  return email;
+}
+
+/**
+ * Create a project via the "New project" dialog and wait for the server `POST /projects` to
+ * persist, so the optimistic card is swapped for the real record before subsequent actions.
+ */
+export async function createProject(page: Page, name: string): Promise<void> {
+  await page.getByTestId('new-project').click();
+  await page.getByTestId('project-name').fill(name);
+  await Promise.all([
+    page.waitForResponse(
+      (r) => r.request().method() === 'POST' && r.url().includes('/projects') && r.ok(),
+    ),
+    page.getByTestId('project-submit').click(),
+  ]);
+  await expect(page.getByTestId('projects-grid').getByText(name)).toBeVisible();
+}
+
+/** Add a backlog task by title on the project detail page and wait for its POST to persist. */
+export async function addBacklogTask(page: Page, title: string): Promise<void> {
+  const input = page.getByTestId('add-backlog-input');
+  await input.fill(title);
+  await Promise.all([
+    page.waitForResponse(
+      (r) => r.request().method() === 'POST' && r.url().includes('/tasks') && r.ok(),
+    ),
+    input.press('Enter'),
+  ]);
+  await expect(page.getByTestId('project-backlog').getByText(title)).toBeVisible();
+}
+
+/** Wait for the next project mutation (PATCH/DELETE /projects) to be persisted server-side. */
+export function waitForProjectWrite(page: Page): Promise<unknown> {
+  return page.waitForResponse(
+    (r) =>
+      ['PATCH', 'DELETE'].includes(r.request().method()) &&
+      r.url().includes('/projects') &&
+      r.ok(),
+  );
+}
+
+/**
  * Add a task under `day` via the inline control and wait for the server `POST` to complete,
  * so the optimistic temp card has been swapped for the persisted one (real id). This makes
  * subsequent reload / open / drag actions deterministic rather than racing the write.

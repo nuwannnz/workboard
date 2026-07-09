@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { Task } from '@workboard/shared';
-import type { WeekDay } from './use-week-tasks';
+import type { ProjectRef, WeekDay } from './use-week-tasks';
 import { TaskCard } from './task-card';
 import { AddTaskInline } from './add-task-inline';
 import { cn } from '../lib/utils';
@@ -24,6 +24,8 @@ export interface DayColumnProps {
   day: WeekDay;
   onAdd: (day: string, title: string) => Promise<boolean>;
   onOpenTask?: (task: Task) => void;
+  /** `projectId → { name, color }` so scheduled project tasks render their badge (FR-012). */
+  projectsById?: Record<string, ProjectRef>;
 }
 
 /**
@@ -31,7 +33,7 @@ export interface DayColumnProps {
  * day's task cards scrolling within the column, an empty state when there are none, and the
  * bottom inline add.
  */
-export function DayColumn({ day, onAdd, onOpenTask }: DayColumnProps) {
+export function DayColumn({ day, onAdd, onOpenTask, projectsById }: DayColumnProps) {
   const { weekday, dayOfMonth } = heading(day.date);
   // The whole column (incl. empty space below cards) is a drop target so a card can land in
   // an empty day or below the last card.
@@ -68,7 +70,14 @@ export function DayColumn({ day, onAdd, onOpenTask }: DayColumnProps) {
           {day.tasks.length === 0 ? (
             <p className="px-1 py-2 text-xs text-muted-foreground">No tasks</p>
           ) : (
-            day.tasks.map((task) => <TaskCard key={task.id} task={task} onOpen={onOpenTask} />)
+            day.tasks.map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                onOpen={onOpenTask}
+                project={task.projectId ? projectsById?.[task.projectId] : undefined}
+              />
+            ))
           )}
         </SortableContext>
       </div>

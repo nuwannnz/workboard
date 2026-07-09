@@ -42,13 +42,18 @@ export const taskSchema = z.object({
 
 /**
  * `POST /tasks` request body (inline add). The server assigns `id`, `order` (appended to
- * the day), `status='open'`, timestamps, and defaults `priority='medium'` (contracts).
- * `title` must be non-empty after trimming (FR-004); `dueDate` is the day the control
- * belongs to (FR-008).
+ * the day or the project backlog), `status='open'`, timestamps, and defaults
+ * `priority='medium'` (contracts). `title` must be non-empty after trimming (FR-004).
+ *
+ * Stage 4 widens this so the backlog is "just tasks": `dueDate` is **optional** (omitted →
+ * backlog-only) and `projectId` is a new **optional** field binding the task to a project
+ * (data-model.md Request-schema changes). A Week inline-add supplies `dueDate`; a backlog
+ * inline-add supplies `projectId` and omits `dueDate`.
  */
 export const createTaskSchema = z.object({
   title: z.string().trim().min(1, 'Title is required'),
-  dueDate: dueDateSchema,
+  dueDate: dueDateSchema.optional(),
+  projectId: z.string().optional(),
   description: z.string().optional(),
   priority: taskPrioritySchema.default('medium'),
   labels: z.array(z.string()).optional(),
@@ -58,12 +63,18 @@ export const createTaskSchema = z.object({
  * `PATCH /tasks/:id` request body. One partial-update surface serves edit, reschedule
  * (`dueDate`), move/reorder (`dueDate?`+`order`), and complete/reopen (`status`). Every
  * field is optional, but `title` if present must be non-empty (FR-004, Story 5.6).
+ *
+ * Stage 4 widens this so a scheduled task can return to backlog-only and a task can be
+ * bound/unbound from a project: `dueDate` accepts a `YYYY-MM-DD` value **or `null`** (clear →
+ * backlog, leaves the Week board — FR-013), and `projectId` accepts a string **or `null`**
+ * (bind/unbind).
  */
 export const updateTaskSchema = z
   .object({
     title: z.string().trim().min(1, 'Title is required'),
     description: z.string(),
-    dueDate: dueDateSchema,
+    dueDate: dueDateSchema.nullable(),
+    projectId: z.string().nullable(),
     priority: taskPrioritySchema,
     labels: z.array(z.string()),
     status: taskStatusSchema,

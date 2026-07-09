@@ -8,6 +8,8 @@ import { LoginScreen } from '../auth/screens/login-screen';
 import { RegisterScreen } from '../auth/screens/register-screen';
 import { VerifyScreen } from '../auth/screens/verify-screen';
 import { WeekPage } from '../week/week-page';
+import { ProjectsPage } from '../projects/projects-page';
+import { ProjectDetailPage } from '../projects/project-detail-page';
 
 /**
  * Public auth route wrapper: authenticated users visiting `/login|/register|/verify` are
@@ -72,6 +74,9 @@ export function AppRoutes() {
         {/* Week is the protected landing surface (contracts/tasks-client-contract.md). */}
         <Route path="/" element={<WeekPage />} />
         <Route path="/week" element={<WeekPage />} />
+        {/* Projects surface: cards grid and per-project detail (Stage 4). */}
+        <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/projects/:id" element={<ProjectDetailPage />} />
         {/* Unknown protected paths fall back to the Week board. */}
         <Route path="*" element={<Navigate to="/week" replace />} />
       </Route>

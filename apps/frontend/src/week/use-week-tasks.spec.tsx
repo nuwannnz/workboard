@@ -1,10 +1,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { renderHook, act, cleanup } from '@testing-library/react';
-import type { Task } from '@workboard/shared';
+import { renderHook, act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import type { Project, Task } from '@workboard/shared';
 import { AuthContext, type AuthApi } from '../auth/auth-context';
 import type { ApiClient } from '../auth/api-client';
 import { useWeekTasks } from './use-week-tasks';
+import { TaskCard } from './task-card';
 
 afterEach(cleanup);
 
@@ -109,5 +110,62 @@ describe('useWeekTasks optimistic add', () => {
     const day = result.current.days.find((d) => d.date === '2026-07-08');
     expect(day?.tasks.map((t) => t.id)).toEqual(['srv-1']);
     expect(result.current.error).toBeNull();
+  });
+});
+
+/** An api-client that answers GET /projects and GET /tasks from fixed lists (Stage 4). */
+function mockAuthWithProjects(tasks: Task[], projects: Project[]): AuthApi {
+  const apiClient: ApiClient = {
+    async request(path, init) {
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (method !== 'GET') return jsonResponse(500, {});
+      if (path.startsWith('/projects')) return jsonResponse(200, { projects });
+      return jsonResponse(200, { tasks });
+    },
+    get: async () => jsonResponse(200, { tasks }),
+  };
+  return {
+    status: 'authenticated',
+    user: { id: 'u1', email: 'u@example.com' },
+    apiClient,
+    register: async () => ({ ok: true }),
+    verify: async () => ({ ok: true }),
+    resendVerification: async () => undefined,
+    login: async () => ({ ok: true }),
+    logout: async () => undefined,
+  };
+}
+
+describe('useWeekTasks projects map (US4)', () => {
+  it('exposes a projectId → { name, color } map from the loaded projects list (research §9)', async () => {
+    const projects: Project[] = [
+      {
+        id: 'p1',
+        name: 'Launch',
+        color: 'blue',
+        order: 'V',
+        createdAt: '2026-07-08T00:00:00.000Z',
+        updatedAt: '2026-07-08T00:00:00.000Z',
+      },
+    ];
+    const auth = mockAuthWithProjects([], projects);
+    const { result } = renderHook(() => useWeekTasks(), { wrapper: wrapper(auth) });
+
+    await waitFor(() => expect(result.current.projectsById.p1).toBeDefined());
+    expect(result.current.projectsById.p1).toEqual({ name: 'Launch', color: 'blue' });
+  });
+});
+
+describe('TaskCard project badge (US4)', () => {
+  it('renders a project badge for a scheduled project task and none for a standalone task', () => {
+    const scheduled = { ...sampleTask(), id: 'sch', projectId: 'p1' };
+    const { rerender } = render(
+      <TaskCard task={scheduled} project={{ name: 'Launch', color: 'blue' }} />,
+    );
+    expect(screen.getByTestId('task-project-badge-sch')).toHaveTextContent('Launch');
+
+    const standalone = { ...sampleTask(), id: 'std', projectId: null };
+    rerender(<TaskCard task={standalone} />);
+    expect(screen.queryByTestId('task-project-badge-std')).toBeNull();
   });
 });

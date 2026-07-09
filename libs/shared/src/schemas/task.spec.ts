@@ -70,8 +70,24 @@ describe('createTaskSchema (POST /tasks body)', () => {
     expect(createTaskSchema.safeParse({ title: 'x', dueDate: '2026-02-30' }).success).toBe(false);
   });
 
-  it('requires a dueDate', () => {
-    expect(createTaskSchema.safeParse({ title: 'x' }).success).toBe(false);
+  it('allows omitting dueDate for a backlog-only task, and accepts a projectId (Stage 4)', () => {
+    // Backlog inline-add: title + projectId, no dueDate.
+    const backlog = createTaskSchema.parse({ title: 'Backlog item', projectId: 'p1' });
+    expect(backlog.dueDate).toBeUndefined();
+    expect(backlog.projectId).toBe('p1');
+
+    // Scheduled project task: title + dueDate + projectId.
+    const scheduled = createTaskSchema.parse({
+      title: 'Scheduled',
+      dueDate: '2026-07-08',
+      projectId: 'p1',
+    });
+    expect(scheduled.dueDate).toBe('2026-07-08');
+    expect(scheduled.projectId).toBe('p1');
+  });
+
+  it('still rejects a malformed dueDate when present', () => {
+    expect(createTaskSchema.safeParse({ title: 'x', dueDate: 'nope' }).success).toBe(false);
   });
 });
 
@@ -90,5 +106,11 @@ describe('updateTaskSchema (PATCH /tasks/:id body)', () => {
 
   it('rejects a malformed dueDate when present', () => {
     expect(updateTaskSchema.safeParse({ dueDate: 'nope' }).success).toBe(false);
+  });
+
+  it('accepts dueDate: null and projectId: null to clear/unbind (Stage 4, FR-013)', () => {
+    expect(updateTaskSchema.safeParse({ dueDate: null }).success).toBe(true);
+    expect(updateTaskSchema.safeParse({ projectId: null }).success).toBe(true);
+    expect(updateTaskSchema.safeParse({ projectId: 'p2' }).success).toBe(true);
   });
 });

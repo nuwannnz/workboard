@@ -24,13 +24,23 @@ export class TasksController {
     return userId;
   }
 
-  /** `GET /tasks?from&to` → `{ tasks }` for the owner's displayed week. */
+  /**
+   * `GET /tasks` → `{ tasks }`. Two independent query modes (contracts/projects-api.md):
+   * - `?projectId=<id>` → all of the owner's tasks in that project (backlog + scheduled),
+   *   independent of any week window.
+   * - `?from&to` (or neither) → the owner's displayed week window (Stage 3 behavior).
+   */
   list = async (req: Request, res: Response): Promise<void> => {
     const userId = TasksController.userId(req, res);
     if (!userId) return;
-    const from = typeof req.query.from === 'string' ? req.query.from : MIN_DATE;
-    const to = typeof req.query.to === 'string' ? req.query.to : MAX_DATE;
     try {
+      if (typeof req.query.projectId === 'string') {
+        const tasks = await this.service.listByProject(userId, req.query.projectId);
+        res.status(200).json({ tasks });
+        return;
+      }
+      const from = typeof req.query.from === 'string' ? req.query.from : MIN_DATE;
+      const to = typeof req.query.to === 'string' ? req.query.to : MAX_DATE;
       const tasks = await this.service.listWeek(userId, from, to);
       res.status(200).json({ tasks });
     } catch {

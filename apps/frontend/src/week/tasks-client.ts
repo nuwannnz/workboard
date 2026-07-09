@@ -23,6 +23,8 @@ const JSON_HEADERS = { 'content-type': 'application/json' } as const;
  */
 export interface TasksClient {
   listWeek(from: string, to: string): Promise<Task[]>;
+  /** All of the owner's tasks in a project (backlog + scheduled) — Stage 4 backlog read. */
+  listByProject(projectId: string): Promise<Task[]>;
   create(input: CreateTaskInput): Promise<Task>;
   update(id: string, patch: UpdateTaskInput): Promise<Task>;
   remove(id: string): Promise<void>;
@@ -34,6 +36,13 @@ export function createTasksClient(api: ApiClient): TasksClient {
       const query = new URLSearchParams({ from, to }).toString();
       const res = await api.request(`/tasks?${query}`, { method: 'GET' });
       if (!res.ok) throw new Error(`listWeek failed: ${res.status}`);
+      return listResponseSchema.parse(await res.json()).tasks;
+    },
+
+    async listByProject(projectId) {
+      const query = new URLSearchParams({ projectId }).toString();
+      const res = await api.request(`/tasks?${query}`, { method: 'GET' });
+      if (!res.ok) throw new Error(`listByProject failed: ${res.status}`);
       return listResponseSchema.parse(await res.json()).tasks;
     },
 

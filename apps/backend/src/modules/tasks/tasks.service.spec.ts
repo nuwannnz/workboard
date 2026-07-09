@@ -17,6 +17,9 @@ function fakeRepo() {
         (t) => t.dueDate !== null && t.dueDate >= from && t.dueDate <= to,
       );
     },
+    async queryByProject(userId: string, projectId: string) {
+      return forUser(userId).filter((t) => t.projectId === projectId);
+    },
     async put(userId: string, task: Task) {
       items.set(userId, [...forUser(userId), task]);
       return task;
@@ -84,6 +87,69 @@ describe('TasksService.listWeek', () => {
 
     const week = await service.listWeek('user-A', '2026-07-06', '2026-07-12');
     expect(week.map((t) => t.title)).toEqual(['In window']);
+  });
+});
+
+describe('TasksService.createTask — project backlog (Stage 4)', () => {
+  it('a backlog task (projectId, no dueDate) appends after the project’s tasks', async () => {
+    const service = makeService();
+    const first = await service.createTask('user-A', { title: 'B1', projectId: 'p1' });
+    const second = await service.createTask('user-A', { title: 'B2', projectId: 'p1' });
+
+    expect(first.dueDate).toBeNull();
+    expect(first.projectId).toBe('p1');
+    expect(first.order < second.order).toBe(true);
+  });
+
+  it('a scheduled task (dueDate + projectId) appends after the day’s tasks', async () => {
+    const service = makeService();
+    // A pre-existing task on the day (no project) sets the day baseline.
+    const dayTask = await service.createTask('user-A', {
+      title: 'Day task',
+      dueDate: '2026-07-08',
+      priority: 'medium',
+    });
+    const scheduled = await service.createTask('user-A', {
+      title: 'Scheduled project task',
+      dueDate: '2026-07-08',
+      projectId: 'p1',
+    });
+
+    expect(scheduled.dueDate).toBe('2026-07-08');
+    expect(scheduled.projectId).toBe('p1');
+    // Appended after the day's existing task.
+    expect(dayTask.order < scheduled.order).toBe(true);
+  });
+
+  it('listByProject returns the project’s tasks (backlog + scheduled), excluding others', async () => {
+    const service = makeService();
+    await service.createTask('user-A', { title: 'B1', projectId: 'p1' });
+    await service.createTask('user-A', { title: 'Scheduled', dueDate: '2026-07-08', projectId: 'p1' });
+    await service.createTask('user-A', { title: 'Other project', projectId: 'p2' });
+    await service.createTask('user-A', { title: 'Standalone', dueDate: '2026-07-08', priority: 'medium' });
+
+    const backlog = await service.listByProject('user-A', 'p1');
+    // Both the backlog and the scheduled task belong to p1; the p2 and standalone tasks don't.
+    expect(backlog.map((t) => t.title).sort()).toEqual(['B1', 'Scheduled']);
+  });
+
+  it('listByProject sorts same-grouping backlog tasks by ascending order', async () => {
+    const service = makeService();
+    // Two backlog tasks in the same project → deterministic increasing append ranks.
+    await service.createTask('user-A', { title: 'First', projectId: 'p1' });
+    await service.createTask('user-A', { title: 'Second', projectId: 'p1' });
+    await service.createTask('user-A', { title: 'Third', projectId: 'p1' });
+
+    const backlog = await service.listByProject('user-A', 'p1');
+    expect(backlog.map((t) => t.title)).toEqual(['First', 'Second', 'Third']);
+  });
+
+  it('listByProject is scoped to the owner', async () => {
+    const service = makeService();
+    await service.createTask('user-A', { title: 'Mine', projectId: 'p1' });
+    await service.createTask('user-B', { title: 'Theirs', projectId: 'p1' });
+    const backlog = await service.listByProject('user-A', 'p1');
+    expect(backlog.map((t) => t.title)).toEqual(['Mine']);
   });
 });
 
@@ -171,5 +237,30 @@ describe('TasksService.deleteTask (US5)', () => {
     const task = await service.createTask('user-A', { title: 'x', dueDate: '2026-07-08', priority: 'medium' });
     expect(await service.deleteTask('user-B', task.id)).toBe(false);
     expect((await service.listWeek('user-A', '2026-07-06', '2026-07-12')).length).toBe(1);
+  });
+});
+
+describe('TasksService.deleteByProject — cascade target (US5, research §5)', () => {
+  it('deletes all of the owner’s tasks in the project (backlog + scheduled), scoped to the user', async () => {
+    const service = makeService();
+    await service.createTask('user-A', { title: 'Backlog', projectId: 'p1' });
+    await service.createTask('user-A', { title: 'Scheduled', dueDate: '2026-07-08', projectId: 'p1' });
+    await service.createTask('user-A', { title: 'Other project', projectId: 'p2' });
+    await service.createTask('user-A', { title: 'Standalone', dueDate: '2026-07-08', priority: 'medium' });
+    await service.createTask('user-B', { title: "B's p1 task", projectId: 'p1' });
+
+    const removed = await service.deleteByProject('user-A', 'p1');
+    expect(removed).toBe(2);
+    // p1 is empty for A; the other project + standalone remain; B's p1 task is untouched.
+    expect(await service.listByProject('user-A', 'p1')).toEqual([]);
+    expect((await service.listByProject('user-A', 'p2')).map((t) => t.title)).toEqual(['Other project']);
+    expect((await service.listByProject('user-B', 'p1')).map((t) => t.title)).toEqual(["B's p1 task"]);
+  });
+
+  it('is idempotent — a second cascade removes nothing', async () => {
+    const service = makeService();
+    await service.createTask('user-A', { title: 'Backlog', projectId: 'p1' });
+    expect(await service.deleteByProject('user-A', 'p1')).toBe(1);
+    expect(await service.deleteByProject('user-A', 'p1')).toBe(0);
   });
 });
