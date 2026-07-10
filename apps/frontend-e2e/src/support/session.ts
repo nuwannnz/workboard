@@ -93,6 +93,40 @@ export async function openProjects(page: Page): Promise<string> {
 }
 
 /**
+ * Establish an authenticated session and open the Notes area (`/notes`). Returns the account's
+ * email. Mirrors {@link openProjects} but lands on the Notes surface (Stage 5).
+ */
+export async function openNotes(page: Page): Promise<string> {
+  const email = E2E_LOCAL ? uniqueEmail('notes') : (process.env.E2E_TEST_EMAIL as string);
+  if (E2E_LOCAL) {
+    await registerAndLogin(page, email);
+  } else {
+    await login(page, email);
+  }
+  await page.getByTestId('nav-notes').click();
+  await expect(page).toHaveURL(/\/notes/);
+  return email;
+}
+
+/** Create a note via the "New note" control and wait for `POST /notes` to persist. */
+export async function createNote(page: Page): Promise<void> {
+  await Promise.all([
+    page.waitForResponse(
+      (r) => r.request().method() === 'POST' && r.url().includes('/notes') && r.ok(),
+    ),
+    page.getByTestId('new-note').first().click(),
+  ]);
+  await expect(page.getByTestId('note-editor')).toBeVisible();
+}
+
+/** Wait for the next note mutation of the given verb (PATCH/DELETE /notes) to persist. */
+export function waitForNoteWrite(page: Page, method: 'PATCH' | 'DELETE' = 'PATCH'): Promise<unknown> {
+  return page.waitForResponse(
+    (r) => r.request().method() === method && r.url().includes('/notes') && r.ok(),
+  );
+}
+
+/**
  * Create a project via the "New project" dialog and wait for the server `POST /projects` to
  * persist, so the optimistic card is swapped for the real record before subsequent actions.
  */

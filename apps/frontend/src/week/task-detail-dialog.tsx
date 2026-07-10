@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { Task, TaskPriority, UpdateTaskInput } from '@workboard/shared';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { LinkedNotesSection } from '../notes/linked-notes-section';
 
 export interface TaskDetailDialogProps {
   task: Task;
@@ -182,6 +183,11 @@ export function TaskDetailDialog({
               {error}
             </span>
           ) : null}
+
+          {/* Notes that link to this task — reverse lookup, single-sourced on the note. */}
+          <div className="border-t border-border pt-3">
+            <LinkedNotesSection taskId={task.id} />
+          </div>
 
           <div className="mt-1 flex items-center justify-between gap-2">
             <Button

@@ -74,6 +74,14 @@ export class TasksService {
     return this.repo.put(userId, task);
   }
 
+  /**
+   * Fetch one of the owner's tasks by id, or `null` for a foreign/missing id. Public service
+   * seam consumed by the notes module for link-target ownership validation (Principle I).
+   */
+  async getById(userId: string, id: string): Promise<Task | null> {
+    return this.repo.getById(userId, id);
+  }
+
   /** List the owner's tasks for a displayed week window (contracts GET). */
   async listWeek(userId: string, from: string, to: string): Promise<Task[]> {
     return this.repo.queryWindow(userId, from, to);

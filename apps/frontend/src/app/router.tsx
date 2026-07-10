@@ -10,6 +10,7 @@ import { VerifyScreen } from '../auth/screens/verify-screen';
 import { WeekPage } from '../week/week-page';
 import { ProjectsPage } from '../projects/projects-page';
 import { ProjectDetailPage } from '../projects/project-detail-page';
+import { NotesPage } from '../notes/notes-page';
 
 /**
  * Public auth route wrapper: authenticated users visiting `/login|/register|/verify` are
@@ -77,6 +78,9 @@ export function AppRoutes() {
         {/* Projects surface: cards grid and per-project detail (Stage 4). */}
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        {/* Notes surface: master-detail notebook; `:id` deep-links a selected note (Stage 5). */}
+        <Route path="/notes" element={<NotesPage />} />
+        <Route path="/notes/:id" element={<NotesPage />} />
         {/* Unknown protected paths fall back to the Week board. */}
         <Route path="*" element={<Navigate to="/week" replace />} />
       </Route>
