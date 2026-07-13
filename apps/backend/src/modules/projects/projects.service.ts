@@ -57,6 +57,14 @@ export class ProjectsService {
     return this.repo.put(userId, project);
   }
 
+  /**
+   * Fetch one of the owner's projects by id, or `null` for a foreign/missing id. Public service
+   * seam consumed by the notes module for link-target ownership validation (Principle I).
+   */
+  async getById(userId: string, id: string): Promise<Project | null> {
+    return this.repo.getById(userId, id);
+  }
+
   /** List the owner's projects sorted by `order` then `id` (contracts GET). */
   async listProjects(userId: string): Promise<Project[]> {
     const projects = await this.repo.list(userId);

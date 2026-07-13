@@ -8,6 +8,7 @@ import { useProjects } from './use-projects';
 import { useProjectTasks } from './use-project-tasks';
 import { ProjectBacklog } from './project-backlog';
 import { ProgressBar } from './progress-bar';
+import { LinkedNotesSection } from '../notes/linked-notes-section';
 import { progress } from './progress';
 import { colorSwatch } from './project-colors';
 import { CreateProjectDialog } from './create-project-dialog';
@@ -139,6 +140,8 @@ export function ProjectDetailPage() {
             onOpenTask={(task) => setOpenTaskId(task.id)}
             onReorder={(taskId, index) => void reorderTask(taskId, index)}
           />
+          {/* Notes that link to this project — reverse lookup, single-sourced on the note. */}
+          {project ? <LinkedNotesSection projectId={project.id} /> : null}
         </div>
       )}
 

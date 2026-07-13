@@ -15,6 +15,6 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { id: 'week', label: 'Week', icon: CalendarDays, to: '/week' },
   { id: 'projects', label: 'Projects', icon: FolderKanban, to: '/projects' },
-  { id: 'notes', label: 'Notes', icon: NotebookPen },
+  { id: 'notes', label: 'Notes', icon: NotebookPen, to: '/notes' },
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
 ];
