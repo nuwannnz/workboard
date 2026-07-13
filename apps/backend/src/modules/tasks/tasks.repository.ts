@@ -78,6 +78,27 @@ export class TasksRepository {
     return (res.Items ?? []).map(TasksRepository.toTask);
   }
 
+  /**
+   * List all of the owner's tasks bound to `projectId` (backlog + scheduled), regardless of
+   * `dueDate` — a single owner-partition Query filtered on `projectId` (research §2, no GSI).
+   */
+  async queryByProject(userId: string, projectId: string): Promise<Task[]> {
+    const res = await this.docClient.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :taskPrefix)',
+        FilterExpression: '#projectId = :projectId',
+        ExpressionAttributeNames: { '#projectId': 'projectId' },
+        ExpressionAttributeValues: {
+          ':pk': TasksRepository.pk(userId),
+          ':taskPrefix': 'TASK#',
+          ':projectId': projectId,
+        },
+      }),
+    );
+    return (res.Items ?? []).map(TasksRepository.toTask);
+  }
+
   /** Persist a fully-formed task under the owner's partition. */
   async put(userId: string, task: Task): Promise<Task> {
     const item: TaskItem = {

@@ -16,9 +16,11 @@ const PRIORITIES: TaskPriority[] = ['low', 'medium', 'high'];
 /**
  * Task detail dialog (FR-009/FR-010/FR-011/FR-012, SC-008). View/edit title, description,
  * due date, priority and labels; complete/reopen; delete. Changing the due date reschedules
- * the task to the matching day. An empty title on save is rejected inline and the dialog
- * stays open with the prior value retained (Story 5.6). A lightweight modal built from the
- * shared design tokens (no extra dependency), keyboard-dismissable with Escape.
+ * the task to the matching day. The due date is **optional and clearable** (Stage 4): emptying
+ * it sends `dueDate: null`, moving the task to backlog-only and off the Week board (FR-013) —
+ * so the project backlog can reuse this dialog. An empty title on save is rejected inline and
+ * the dialog stays open with the prior value retained (Story 5.6). A lightweight modal built
+ * from the shared design tokens (no extra dependency), keyboard-dismissable with Escape.
  */
 export function TaskDetailDialog({
   task,
@@ -59,7 +61,8 @@ export function TaskDetailDialog({
     const patch: UpdateTaskInput = {
       title: trimmed,
       description,
-      dueDate: dueDate || undefined,
+      // Empty → clear the due date (backlog-only, leaves the Week board — FR-013).
+      dueDate: dueDate ? dueDate : null,
       priority,
       labels: parsedLabels,
     };

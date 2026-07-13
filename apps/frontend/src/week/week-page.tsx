@@ -15,6 +15,7 @@ export function WeekPage() {
   const {
     referenceMonday,
     days,
+    projectsById,
     loadStatus,
     error,
     addTask,
@@ -68,6 +69,7 @@ export function WeekPage() {
           ) : null}
           <WeekBoard
             days={days}
+            projectsById={projectsById}
             onAdd={addTask}
             onMove={(id, toDay, index) => void moveTask(id, toDay, index)}
             onReorder={(id, index) => void reorderTask(id, index)}

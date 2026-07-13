@@ -9,7 +9,7 @@ import {
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { Task } from '@workboard/shared';
-import type { WeekDay } from './use-week-tasks';
+import type { ProjectRef, WeekDay } from './use-week-tasks';
 import { DayColumn } from './day-column';
 
 export interface WeekBoardProps {
@@ -20,6 +20,8 @@ export interface WeekBoardProps {
   /** Reorder a card within its day at `index` (US3). Omitted until US3 lands. */
   onReorder?: (id: string, index: number) => void;
   onOpenTask?: (task: Task) => void;
+  /** `projectId → { name, color }` for scheduled project-task badges (FR-012). */
+  projectsById?: Record<string, ProjectRef>;
 }
 
 /**
@@ -29,7 +31,14 @@ export interface WeekBoardProps {
  * changed) or `onReorder` (same day). A drop outside any column, or back in place, mutates
  * nothing (Story 2.3).
  */
-export function WeekBoard({ days, onAdd, onMove, onReorder, onOpenTask }: WeekBoardProps) {
+export function WeekBoard({
+  days,
+  onAdd,
+  onMove,
+  onReorder,
+  onOpenTask,
+  projectsById,
+}: WeekBoardProps) {
   const sensors = useSensors(
     // A small activation distance lets a plain click open a card without starting a drag.
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -78,7 +87,13 @@ export function WeekBoard({ days, onAdd, onMove, onReorder, onOpenTask }: WeekBo
         className="grid flex-1 grid-cols-1 gap-3 overflow-auto p-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7"
       >
         {days.map((day) => (
-          <DayColumn key={day.date} day={day} onAdd={onAdd} onOpenTask={onOpenTask} />
+          <DayColumn
+            key={day.date}
+            day={day}
+            onAdd={onAdd}
+            onOpenTask={onOpenTask}
+            projectsById={projectsById}
+          />
         ))}
       </div>
     </DndContext>

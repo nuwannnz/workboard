@@ -2,6 +2,7 @@ import express, { type Express } from 'express';
 import { healthRoutes } from './routes/health.routes';
 import { authRoutes } from './modules/auth/auth.routes';
 import { tasksRoutes } from './modules/tasks/tasks.routes';
+import { projectsRoutes } from './modules/projects/projects.routes';
 import { authenticate } from './middleware/authenticate';
 import { resolveIdentity } from './middleware/resolve-identity';
 
@@ -25,6 +26,11 @@ export function createApp(): Express {
   // resolve-identity so controllers read only the resolved app `userId` (Stage 2's
   // protected proxy already routes `/tasks/*` — no new infra).
   app.use(tasksRoutes(authenticate, resolveIdentity));
+
+  // Projects module: the Projects surface's REST endpoints, all behind authenticate +
+  // resolve-identity so controllers read only the resolved app `userId` (Stage 2's protected
+  // proxy already routes `/projects/*` — no new infra).
+  app.use(projectsRoutes(authenticate, resolveIdentity));
 
   return app;
 }

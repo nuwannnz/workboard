@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Task, UpdateTaskInput } from '@workboard/shared';
+import type { ProjectColor, Task, UpdateTaskInput } from '@workboard/shared';
 import { useAuth } from '../auth/use-auth';
 import { createTasksClient } from './tasks-client';
+import { createProjectsClient } from '../projects/projects-client';
 import { append, between } from './ordering';
 import { startOfWeek, weekDays, addWeeks, todayDate, isToday } from './week';
 
 export type LoadStatus = 'loading' | 'ready' | 'error';
+
+/** The display identity a scheduled task's `projectId` resolves to on the Week board. */
+export interface ProjectRef {
+  name: string;
+  color: ProjectColor;
+}
 
 /** One rendered day column: its date, today marker, and its tasks in manual order. */
 export interface WeekDay {
@@ -36,11 +43,16 @@ function nextTempId(): string {
 export function useWeekTasks() {
   const { apiClient } = useAuth();
   const client = useMemo(() => createTasksClient(apiClient), [apiClient]);
+  const projectsClient = useMemo(() => createProjectsClient(apiClient), [apiClient]);
 
   const [referenceMonday, setReferenceMonday] = useState(() => startOfWeek(todayDate()));
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>('loading');
   const [error, setError] = useState<string | null>(null);
+  // `projectId → { name, color }` for day-card project badges (research §9). Loaded once and
+  // refreshed on mount; a project rename/recolor propagates on the next load without touching
+  // task records (FR-014).
+  const [projectsById, setProjectsById] = useState<Record<string, ProjectRef>>({});
 
   const days = useMemo(() => weekDays(referenceMonday), [referenceMonday]);
 
@@ -76,6 +88,23 @@ export function useWeekTasks() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Load the projects list once so scheduled tasks can render their project's name/color.
+  // A failure here leaves badges unresolved but never blocks the board (best-effort).
+  const loadProjects = useCallback(async () => {
+    try {
+      const projects = await projectsClient.listProjects();
+      const map: Record<string, ProjectRef> = {};
+      for (const p of projects) map[p.id] = { name: p.name, color: p.color };
+      setProjectsById(map);
+    } catch {
+      /* best-effort: leave badges unresolved */
+    }
+  }, [projectsClient]);
+
+  useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
 
   /** The seven day columns with their grouped, ordered tasks. */
   const weekViewDays = useMemo<WeekDay[]>(
@@ -272,6 +301,7 @@ export function useWeekTasks() {
   return {
     referenceMonday,
     days: weekViewDays,
+    projectsById,
     loadStatus,
     error,
     reload: load,

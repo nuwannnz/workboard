@@ -36,13 +36,18 @@ function fakeDocClient() {
       }
       if (command instanceof QueryCommand) {
         const values = command.input.ExpressionAttributeValues as Record<string, string>;
-        const items = [...store.values()].filter(
-          (it) =>
-            it.PK === values[':pk'] &&
-            it.SK.startsWith(values[':taskPrefix']) &&
-            (it.dueDate as string) >= values[':from'] &&
-            (it.dueDate as string) <= values[':to'],
+        const inPartition = [...store.values()].filter(
+          (it) => it.PK === values[':pk'] && it.SK.startsWith(values[':taskPrefix']),
         );
+        // Project-scoped read (queryByProject) vs. the week-window read (queryWindow).
+        const items =
+          ':projectId' in values
+            ? inPartition.filter((it) => (it.projectId as string | null) === values[':projectId'])
+            : inPartition.filter(
+                (it) =>
+                  (it.dueDate as string) >= values[':from'] &&
+                  (it.dueDate as string) <= values[':to'],
+              );
         return { Items: items };
       }
       if (command instanceof UpdateCommand) {
@@ -155,5 +160,29 @@ describe('TasksRepository ownership', () => {
     const updated = await repo.update('user-A', 'a1', { dueDate: '2026-07-10', order: 'Vz' });
     expect(updated).toMatchObject({ id: 'a1', dueDate: '2026-07-10', order: 'Vz' });
     expect(updated).not.toHaveProperty('PK');
+  });
+});
+
+describe('TasksRepository.queryByProject (Stage 4)', () => {
+  it('returns all owner tasks with the projectId (backlog + scheduled), scoped to the user', async () => {
+    const { repo } = makeRepo();
+    // Backlog task (no dueDate) in project p1.
+    await repo.put('user-A', sampleTask({ id: 'a-backlog', dueDate: null, projectId: 'p1' }));
+    // Scheduled task in project p1.
+    await repo.put('user-A', sampleTask({ id: 'a-sched', dueDate: '2026-07-08', projectId: 'p1' }));
+    // A standalone task (no project) and a task in another project.
+    await repo.put('user-A', sampleTask({ id: 'a-standalone', projectId: null }));
+    await repo.put('user-A', sampleTask({ id: 'a-other', projectId: 'p2' }));
+    // Another user's task in p1 must never appear.
+    await repo.put('user-B', sampleTask({ id: 'b-p1', projectId: 'p1' }));
+
+    const p1 = await repo.queryByProject('user-A', 'p1');
+    expect(p1.map((t) => t.id).sort()).toEqual(['a-backlog', 'a-sched']);
+  });
+
+  it('a foreign user reading a projectId gets none of the owner’s tasks (no disclosure)', async () => {
+    const { repo } = makeRepo();
+    await repo.put('user-A', sampleTask({ id: 'a1', projectId: 'p1' }));
+    expect(await repo.queryByProject('user-B', 'p1')).toEqual([]);
   });
 });
