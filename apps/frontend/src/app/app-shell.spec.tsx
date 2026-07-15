@@ -4,7 +4,10 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AppShell } from './app-shell';
 import { AuthContext, type AuthApi } from '../auth/auth-context';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllEnvs();
+});
 
 function authValue(overrides: Partial<AuthApi> = {}): AuthApi {
   return {
@@ -49,6 +52,17 @@ describe('AppShell', () => {
     for (const id of ['week', 'projects', 'notes', 'overview']) {
       expect(screen.getByTestId(`nav-${id}`)).toBeInTheDocument();
     }
+  });
+
+  it('shows the injected app version in the sidebar footer (FR-016)', () => {
+    vi.stubEnv('VITE_APP_VERSION', '9.9.9');
+    renderShell(authValue());
+    expect(screen.getByTestId('app-version')).toHaveTextContent('v9.9.9');
+  });
+
+  it('falls back to 0.0.0-dev when no version is injected', () => {
+    renderShell(authValue());
+    expect(screen.getByTestId('app-version')).toHaveTextContent('v0.0.0-dev');
   });
 
   it('logs out and redirects to /login', async () => {

@@ -1,6 +1,11 @@
 <!--
 Sync Impact Report
-- Version change: [TEMPLATE] → 1.0.0 (initial ratification)
+- Version change: 1.0.0 → 1.1.0 (stage 006 amendment: frontend hosting moved from
+  CloudFront + S3 to Vercel per the user-directed migration; the AWS backend remains
+  fully CDK-managed. Modified: Principle V resource list, Technology & Architecture
+  Constraints "Infrastructure" bullet. Justification recorded in
+  specs/006-vercel-deploy-pipeline/plan.md → Complexity Tracking.)
+- Previous version change: [TEMPLATE] → 1.0.0 (initial ratification)
 - Modified principles: N/A (first concrete version, all placeholders filled)
 - Added sections: Core Principles (I–VI), Technology & Architecture Constraints,
   Development Workflow & Quality Gates, Governance
@@ -66,9 +71,10 @@ missed ownership check in the Repository layer is a full data-leak vulnerability
 class, so isolation is enforced at the lowest layer rather than trusted to the UI.
 
 ### V. Infrastructure as Code & Single Source of Deployment
-All AWS infrastructure (Lambda, API Gateway, DynamoDB, S3, CloudFront, Cognito) MUST
-be defined via AWS CDK; no manual/console-created resources are permitted for
-anything that ships to users. The Nx monorepo MUST remain the single source of truth
+All AWS infrastructure (Lambda, API Gateway, DynamoDB, Cognito) MUST be defined via
+AWS CDK; no manual/console-created resources are permitted for anything that ships
+to users. The frontend is hosted on Vercel (stage 006); the AWS backend remains
+fully CDK-managed. The Nx monorepo MUST remain the single source of truth
 for how frontend, backend, and infra packages build, test, and depend on one
 another — build/test commands MUST be run through Nx targets, not ad-hoc scripts
 that bypass the monorepo graph.
@@ -96,8 +102,9 @@ Projects/Notes/Overview experience without a validated need.
 - Database: DynamoDB is the only persistence store; schema/access-pattern changes
   MUST account for DynamoDB's single-table/key-design constraints rather than
   assuming relational semantics.
-- Infrastructure: AWS CDK is the only supported IaC tool; CloudFront + S3 serve the
-  PWA/static assets, Cognito is the only supported identity provider.
+- Infrastructure: AWS CDK is the only supported IaC tool for AWS resources; Vercel
+  serves the frontend (PWA/static assets) while the AWS backend remains CDK-managed,
+  and Cognito is the only supported identity provider.
 - Monorepo: Nx manages all packages (frontend, backend, infra); new packages MUST be
   registered in the Nx workspace graph.
 - Testing: Vitest for unit/integration tests, Playwright for end-to-end tests,
@@ -143,4 +150,4 @@ requesting changes. Runtime development guidance for coding agents lives in
 `CLAUDE.md` and any `.specify` planning artifacts; those MUST stay consistent with
 this constitution.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-06 | **Last Amended**: 2026-07-06
+**Version**: 1.1.0 | **Ratified**: 2026-07-06 | **Last Amended**: 2026-07-13

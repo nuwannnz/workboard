@@ -22,6 +22,9 @@ apps/frontend/src-tauri/target/
 cdk.out/
 apps/infra/cdk.out/
 
+# Vercel (project link + prebuilt deploy output)
+.vercel/
+
 # Playwright
 test-results/
 playwright-report/

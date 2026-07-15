@@ -4,8 +4,9 @@ import { Template } from 'aws-cdk-lib/assertions';
 import { WorkboardStack } from './workboard-stack';
 
 /**
- * Sample CDK assertion test (T031): the synthesized template contains every
- * skeleton resource — DynamoDB, Lambda, API Gateway, S3, CloudFront, Cognito.
+ * CDK assertion tests: the synthesized template contains every backend resource —
+ * DynamoDB, Lambda, API Gateway, Cognito — and NO frontend web hosting (the frontend
+ * is served by Vercel; S3 + CloudFront were removed in stage 006).
  */
 describe('WorkboardStack', () => {
   const app = new App();
@@ -19,8 +20,9 @@ describe('WorkboardStack', () => {
   });
 
   it('provisions the backend Lambda and API Gateway', () => {
-    // The Express backend Lambda (a second Lambda-backed custom resource exists
-    // for the web bucket's auto-delete, so assert on properties, not a count).
+    // With the web-hosting construct gone, the only function left is the Express
+    // backend Lambda (no more bucket auto-delete / BucketDeployment helpers).
+    template.resourceCountIs('AWS::Lambda::Function', 1);
     template.hasResourceProperties('AWS::Lambda::Function', {
       Runtime: 'nodejs22.x',
       Handler: 'index.handler',
@@ -28,12 +30,12 @@ describe('WorkboardStack', () => {
     template.resourceCountIs('AWS::ApiGateway::RestApi', 1);
   });
 
-  it('provisions S3 + CloudFront static hosting', () => {
-    template.resourceCountIs('AWS::S3::Bucket', 1);
-    template.resourceCountIs('AWS::CloudFront::Distribution', 1);
+  it('hosts no frontend on AWS — Vercel serves it (no CloudFront, no web bucket)', () => {
+    template.resourceCountIs('AWS::CloudFront::Distribution', 0);
+    template.resourceCountIs('AWS::S3::Bucket', 0);
   });
 
-  it('enables CORS preflight on the API so the CloudFront-hosted SPA can call it', () => {
+  it('enables CORS preflight on the API so the Vercel-hosted SPA can call it', () => {
     // defaultCorsPreflightOptions adds an unauthenticated OPTIONS method to each resource.
     template.hasResourceProperties('AWS::ApiGateway::Method', {
       HttpMethod: 'OPTIONS',
