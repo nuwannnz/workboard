@@ -1,13 +1,27 @@
 name: CI
 
-# Runs the quality gates on every PR (FR-012). `main` is protected so a failing
-# gate blocks merge and direct pushes are disallowed (FR-013 — configured in
-# repository settings; see README).
+# Quality gates run on every PR and push (FR-012); `main` is protected so a failing gate
+# blocks merge and direct pushes are disallowed (configured in repository settings; README).
+#
+# Delivery (specs/006-vercel-deploy-pipeline, contracts/deploy-pipeline.md):
+# - push to `main` (a merged PR) → `deploy`: backend `cdk deploy` → build frontend from the
+#   fresh CDK outputs + computed SemVer → publish to Vercel → tag + GitHub Release (last, so
+#   a version exists only when both deploys succeeded — FR-010/FR-015, SC-007).
+# - workflow_dispatch with a previous `vX.Y.Z` tag → redeploy that version (rollback, US4);
+#   no new tag/Release is created for an existing tag (FR-018).
+# - pull_request → gates plus a non-production Vercel preview (US5); never touches
+#   production or the version.
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Existing release tag to redeploy (e.g. v1.2.0) — rollback path (US4)'
+        required: true
+        type: string
 
 jobs:
   quality-gates:
@@ -16,6 +30,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # On a dispatched redeploy, validate the tag being redeployed, not `main`.
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || '' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -26,10 +42,17 @@ jobs:
         run: npm ci
 
       - name: Derive Nx affected base/head
+        if: github.event_name != 'workflow_dispatch'
         uses: nrwl/nx-set-shas@v4
 
       - name: Lint + unit/integration tests (affected)
+        if: github.event_name != 'workflow_dispatch'
         run: npx nx affected -t lint test --base=$NX_BASE --head=$NX_HEAD
+
+      # A dispatched redeploy checks out a tag, where "affected" has no meaningful base.
+      - name: Lint + unit/integration tests (all — dispatched redeploy)
+        if: github.event_name == 'workflow_dispatch'
+        run: npx nx run-many -t lint test
 
       - name: Build frontend bundle
         run: npx nx build frontend
@@ -42,3 +65,168 @@ jobs:
 
       - name: End-to-end tests
         run: npx nx e2e frontend-e2e
+
+  # Production deploy: only for a merge to `main` (push) or a dispatched tag redeploy, and
+  # only behind green gates (FR-006/7/8). Steps are strictly ordered: backend first (FR-009),
+  # tag/Release last (FR-010/FR-015).
+  deploy:
+    needs: quality-gates
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # Serialize overlapping merges; never abandon a running deploy (edge case, research §5).
+    concurrency:
+      group: deploy-main
+      cancel-in-progress: false
+    permissions:
+      contents: write # push the release tag + create the GitHub Release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags — the version is computed from them
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || '' }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy backend (CDK)
+        run: npx nx run infra:deploy -- --outputs-file "$RUNNER_TEMP/outputs.json"
+
+      - name: Parse stack outputs
+        id: outputs
+        run: |
+          node -e '
+            const { appendFileSync } = require("node:fs");
+            const outputs = require(process.env.RUNNER_TEMP + "/outputs.json").WorkBoardStack ?? {};
+            const parsed = {
+              api_base_url: String(outputs.ApiBaseUrl ?? "").replace(/\/$/, ""),
+              user_pool_id: outputs.UserPoolId ?? "",
+              user_pool_client_id: outputs.UserPoolClientId ?? "",
+            };
+            for (const [key, value] of Object.entries(parsed)) {
+              if (!value) { console.error(`Missing stack output for ${key}`); process.exit(1); }
+              appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
+            }
+          '
+
+      # Compute (dry-run — the tag itself is only created after both deploys succeed) the next
+      # SemVer from Conventional Commits since the last tag: fix→patch, feat→minor,
+      # breaking→major (FR-013/FR-014, research §2).
+      - name: Compute next version from Conventional Commits
+        if: github.event_name == 'push'
+        id: semver
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          dry_run: true
+          default_bump: patch
+
+      - name: Resolve version for this run
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          DISPATCH_REF: ${{ inputs.ref }}
+          NEW_VERSION: ${{ steps.semver.outputs.new_version }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            # Redeploying an existing release: reuse its version verbatim (FR-018).
+            echo "version=${DISPATCH_REF#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build frontend + publish to Vercel (production)
+        env:
+          DEPLOY_API_BASE_URL: ${{ steps.outputs.outputs.api_base_url }}
+          DEPLOY_USER_POOL_ID: ${{ steps.outputs.outputs.user_pool_id }}
+          DEPLOY_USER_POOL_CLIENT_ID: ${{ steps.outputs.outputs.user_pool_client_id }}
+          DEPLOY_APP_VERSION: ${{ steps.version.outputs.version }}
+          DEPLOY_PROD: '1'
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: npm run deploy:frontend
+
+      # LAST step (FR-010/FR-015, SC-007): both deploys succeeded, so record the release.
+      # No-ops on a dispatched redeploy of an existing tag (FR-018).
+      - name: Create release tag + GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          TAG="v${VERSION}"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists — skipping tag/Release creation."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag
+          echo "### Released $TAG 🎉" >> "$GITHUB_STEP_SUMMARY"
+
+  # PR preview (US5, P3): a non-production Vercel deploy of the frontend. Never runs
+  # `cdk deploy`, never publishes production, never creates a tag/Release. The build targets
+  # the existing production backend via repo Variables (PREVIEW_*, documented in README);
+  # when they are unset the preview is skipped rather than failing the PR.
+  preview:
+    needs: quality-gates
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # comment the preview URL on the PR
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend + publish Vercel preview (non-production)
+        if: vars.PREVIEW_API_BASE_URL != ''
+        id: preview
+        env:
+          DEPLOY_API_BASE_URL: ${{ vars.PREVIEW_API_BASE_URL }}
+          DEPLOY_USER_POOL_ID: ${{ vars.PREVIEW_COGNITO_USER_POOL_ID }}
+          DEPLOY_USER_POOL_CLIENT_ID: ${{ vars.PREVIEW_COGNITO_CLIENT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: npm run deploy:frontend
+
+      - name: Surface preview URL
+        if: steps.preview.outputs.url != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          URL: ${{ steps.preview.outputs.url }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          echo "### Vercel preview → $URL" >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" \
+            --edit-last --create-if-none \
+            --body "🔍 Vercel preview: $URL" \
+            || gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "🔍 Vercel preview: $URL"
+
+      - name: Note skipped preview
+        if: vars.PREVIEW_API_BASE_URL == ''
+        run: echo "Preview skipped — set the PREVIEW_* repository Variables to enable it (README)." >> "$GITHUB_STEP_SUMMARY"

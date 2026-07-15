@@ -63,9 +63,9 @@ export class ApiStack extends Construct {
     this.restApi = new apigateway.RestApi(this, 'BackendApi', {
       restApiName: 'WorkBoardApi',
       deployOptions: { stageName: 'prod' },
-      // The SPA is served from the CloudFront domain and calls this API cross-origin. Requests
+      // The SPA is served from the Vercel domain and calls this API cross-origin. Requests
       // carry a Bearer id token (no cookies), so `*` origins are safe here; tighten to the
-      // CloudFront domain later if desired. This auto-adds the OPTIONS preflight to every path.
+      // Vercel domain later if desired. This auto-adds the OPTIONS preflight to every path.
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,

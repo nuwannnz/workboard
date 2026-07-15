@@ -1,6 +1,7 @@
 import { useNavigate, Outlet } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { navItems } from './nav-items';
+import { appVersion } from './app-version';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../auth/use-auth';
 
@@ -55,6 +56,12 @@ export function AppShell() {
             <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="hidden sm:inline">Log out</span>
           </Button>
+          <p
+            className="hidden px-4 py-1 text-xs text-muted-foreground sm:block"
+            data-testid="app-version"
+          >
+            v{appVersion()}
+          </p>
         </div>
       </aside>
 

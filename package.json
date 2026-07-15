@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
-  "description": "WorkBoard — Nx monorepo (frontend PWA/desktop, layered Express backend, AWS CDK infra, shared types)",
+  "description": "WorkBoard \u2014 Nx monorepo (frontend PWA/desktop, layered Express backend, AWS CDK infra, shared types)",
   "engines": {
     "node": ">=22 <23"
   },
@@ -17,7 +17,8 @@
     "local": "node tools/scripts/dev-local.mjs",
     "local:down": "docker compose -f apps/backend/docker-compose.yml down",
     "e2e:local": "node tools/scripts/local-stack.mjs && E2E_LOCAL=1 npx nx e2e frontend-e2e",
-    "deploy": "node tools/scripts/deploy.mjs"
+    "deploy": "node tools/scripts/deploy.mjs",
+    "deploy:frontend": "node tools/scripts/deploy-frontend-vercel.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",

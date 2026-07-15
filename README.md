@@ -92,36 +92,81 @@ For a run against **real** Cognito instead, deploy the CDK stack and set the `CO
 `VITE_COGNITO_*` values from its outputs (leaving `VITE_COGNITO_ENDPOINT` and the backend
 `COGNITO_ISSUER`/`COGNITO_JWKS_URI` empty).
 
-## Deploy to AWS — one command (`npm run deploy`)
+## Deploy — merge-triggered pipeline (primary path)
 
-Deploys the full stack (S3 + CloudFront hosting, API Gateway + Lambda, Cognito, DynamoDB) with a
-correctly-configured production frontend:
+Hosting split: the **frontend is served by Vercel**; the **backend (API Gateway + Lambda,
+Cognito, DynamoDB) stays fully CDK-managed on AWS**. There is no S3/CloudFront web hosting.
+
+**Merging a PR into `main` deploys automatically** — the `deploy` job in
+`.github/workflows/ci.yml` runs behind the existing quality gates:
+
+1. Backend `cdk deploy` (via `nx run infra:deploy`) and captures the stack outputs.
+2. Computes the next SemVer from Conventional Commits (`fix:`→patch, `feat:`→minor,
+   breaking→major).
+3. Builds the frontend against the fresh outputs + `VITE_APP_VERSION` and publishes it to
+   Vercel (production).
+4. **Last**, creates the annotated `vX.Y.Z` tag + GitHub Release — so a version exists only
+   when both deploys succeeded; a failed run leaves the previous version live.
+
+### One-time pipeline setup (GitHub Secrets)
+
+Add these under repo → Settings → Secrets and variables → Actions. None may ever appear in the
+repo, the frontend bundle, or logs:
+
+| Secret | Purpose |
+|--------|---------|
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` | backend `cdk deploy` |
+| `VERCEL_TOKEN` | publish the frontend to Vercel |
+| `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | identify the Vercel project |
+
+Create the Vercel project once and link it — `npx vercel link --cwd apps/frontend` — which
+prints the org/project IDs (also written to the git-ignored `apps/frontend/.vercel/`); create
+the token in the Vercel dashboard (Account Settings → Tokens). Full walkthrough:
+`specs/006-vercel-deploy-pipeline/quickstart.md`.
+
+### Versioning, traceability & rollback
+
+Each successful deploy is recorded as an annotated `vX.Y.Z` tag + GitHub Release on the exact
+merge commit — the **newest Release is what's live**. To roll back without a manual rebuild:
+Actions → CI → *Run workflow* with the known-good tag in the `ref` input (or
+`gh workflow run ci.yml -f ref=vX.Y.Z`). That tag's source is checked out, gated, redeployed
+(backend + frontend), and the live app reports that version again; no new tag/Release is created
+and DynamoDB data is retained, never reverted. Runbook:
+`specs/006-vercel-deploy-pipeline/quickstart.md` §F.
+
+### PR previews (optional)
+
+PRs get a non-production Vercel preview of the frontend when the repository **Variables**
+`PREVIEW_API_BASE_URL`, `PREVIEW_COGNITO_USER_POOL_ID`, `PREVIEW_COGNITO_CLIENT_ID` are set
+(typically the production backend's CDK outputs). The preview URL is posted on the PR; when the
+variables are unset the preview is skipped. Previews never touch production or the version.
+
+### Manual fallback: `npm run deploy`
+
+The same flow, runnable locally (AWS credentials + a bootstrapped account, plus `VERCEL_TOKEN`
+in the environment or a `vercel login` session with the project linked):
 
 ```bash
-npm run deploy      # requires AWS credentials + a bootstrapped account (cdk bootstrap)
+npm run deploy
 ```
 
-The frontend must be built with the **deployed** API URL and Cognito IDs, which only exist after
-the stack is created — a chicken-and-egg the script resolves automatically:
-
-1. Deploys the infra (no site upload yet) and reads the CDK outputs (`ApiBaseUrl`, `UserPoolId`,
-   `UserPoolClientId`, `CloudFrontUrl`).
+1. Deploys the CDK stack and reads the outputs (`ApiBaseUrl`, `UserPoolId`, `UserPoolClientId`).
 2. Builds the frontend with those production values — real Cognito (SRP; `VITE_COGNITO_ENDPOINT`
    is empty, **not** the local `/cognito`) and the absolute API Gateway URL. It moves any local
    `.env.local` aside and forces a fresh build (`--skip-nx-cache`) so local values can't leak in.
-3. Deploys again — the S3 upload publishes the build and invalidates CloudFront.
+3. Publishes `apps/frontend/dist` to Vercel through the **same helper CI uses**
+   (`tools/scripts/deploy-frontend-vercel.mjs`) — one source of truth for how the frontend ships.
 
 Notes:
-- **Why the upload step exists:** the S3 bucket is private behind CloudFront (OAC). Without the
-  build in the bucket, CloudFront returns S3 `AccessDenied` for every path — deploying the infra
-  alone is not enough.
-- **CORS:** the SPA (CloudFront origin) calls the API (API Gateway origin) cross-origin. The API
+- **CORS:** the SPA (Vercel origin) calls the API (API Gateway origin) cross-origin. The API
   enables CORS (`allowOrigins: *`, since requests carry a Bearer token, not cookies) including on
-  error responses, so the client's refresh-on-401 works. Tighten `*` to the CloudFront domain in
+  error responses, so the client's refresh-on-401 works. Tighten `*` to the Vercel domain in
   `apps/infra/lib/api-stack.ts` if you want.
 - **Auth in production** uses **real Cognito with SRP** and the **API Gateway Cognito authorizer**
   (edge verification) — the local `USER_PASSWORD_AUTH` + in-process verifier path is off. Register
   a real email; Cognito emails a real verification code (no fixed `123456`).
+- **SPA routing** on Vercel: `apps/frontend/vercel.json` rewrites every path to `/index.html`
+  (replacing CloudFront's old 403/404→index.html error responses).
 
 ## Workspace-wide commands (Nx) — FR-001
 
@@ -190,7 +235,7 @@ apps/
   frontend/       React + Vite + shadcn/ui PWA; Tauri desktop in src-tauri/; platform adapter in src/platform/
   frontend-e2e/   Playwright end-to-end project
   backend/        Layered Express app (routes/controllers/services/repositories/domain/...) + modules/* placeholders
-  infra/          AWS CDK v2 app (S3+CloudFront, API Gateway, Lambda, DynamoDB, Cognito)
+  infra/          AWS CDK v2 app (API Gateway, Lambda, DynamoDB, Cognito — frontend hosting is Vercel)
 libs/
   shared/         Cross-package TypeScript types + Zod schemas (Task/Project/Note/User)
 tools/vitest/     Shared Vitest base preset
