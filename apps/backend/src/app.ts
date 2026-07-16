@@ -6,6 +6,7 @@ import { projectsRoutes } from './modules/projects/projects.routes';
 import { notesRoutes } from './modules/notes/notes.routes';
 import { authenticate } from './middleware/authenticate';
 import { resolveIdentity } from './middleware/resolve-identity';
+import { cors } from './middleware/cors';
 
 /**
  * Express app factory (FR-008). Both entry points — the local server (`main.ts`)
@@ -14,6 +15,9 @@ import { resolveIdentity } from './middleware/resolve-identity';
  */
 export function createApp(): Express {
   const app = express();
+  // CORS first, so `Access-Control-Allow-Origin` is present on every response — including
+  // errors and 401s — that the cross-origin SPA (Vercel) reads from this API (execute-api).
+  app.use(cors());
   app.use(express.json());
 
   // Public health probe.
