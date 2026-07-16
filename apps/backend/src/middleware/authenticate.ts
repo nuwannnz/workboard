@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
+import { getCurrentInvoke } from '@codegenie/serverless-express';
 import { loadConfig } from '../shared/config';
 
 /**
@@ -37,13 +38,17 @@ export type TokenVerifier = (idToken: string) => Promise<IdTokenClaims>;
 
 /**
  * Reads the claims API Gateway's Cognito authorizer forwards to the Lambda. With
- * `@codegenie/serverless-express` the original event hangs off `req.apiGateway.event`.
+ * `@codegenie/serverless-express` v4 the original event is reached via `getCurrentInvoke()`
+ * (the per-invocation event/context) — it is NOT hung off the Express `req` unless the
+ * library's `eventContext` middleware is registered, which the package doesn't even export.
+ * Outside a Lambda invocation (local server / unit tests) `getCurrentInvoke()` returns `{}`,
+ * so this yields `undefined` and the caller falls back to local verification.
  */
-function extractGatewayClaims(req: Request): IdTokenClaims | undefined {
-  const anyReq = req as unknown as {
-    apiGateway?: { event?: { requestContext?: { authorizer?: { claims?: IdTokenClaims } } } };
+function extractGatewayClaims(): IdTokenClaims | undefined {
+  const { event } = getCurrentInvoke() as {
+    event?: { requestContext?: { authorizer?: { claims?: IdTokenClaims } } };
   };
-  return anyReq.apiGateway?.event?.requestContext?.authorizer?.claims;
+  return event?.requestContext?.authorizer?.claims;
 }
 
 function readBearerToken(req: Request): string | undefined {
@@ -135,7 +140,7 @@ export function createAuthenticate(deps: { verifyToken?: TokenVerifier } = {}): 
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     // Production hot path: trust the gateway-verified claims — no crypto here.
-    const claims = extractGatewayClaims(req);
+    const claims = extractGatewayClaims();
     if (claims?.sub) {
       req.auth = toAuthContext(claims);
       next();
