@@ -14,7 +14,11 @@ import { resolveIdentity } from './middleware/resolve-identity';
  */
 export function createApp(): Express {
   const app = express();
-  app.use(express.json());
+  // Note bodies are Markdown carried inline in the request JSON and are no longer bounded by
+  // DynamoDB's 400 KB item limit now that they live in S3 (FR-013). Raise the body-parser cap
+  // from its 100 KB default so large notes aren't rejected with `413 PayloadTooLarge`; keep it
+  // at API Gateway's ~10 MB Lambda-proxy ceiling, the real upstream limit.
+  app.use(express.json({ limit: '10mb' }));
 
   // Public health probe.
   app.use(healthRoutes());

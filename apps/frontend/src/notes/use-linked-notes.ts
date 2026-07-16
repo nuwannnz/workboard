@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Note } from '@workboard/shared';
+import type { NoteMetadata } from '@workboard/shared';
 import { useAuth } from '../auth/use-auth';
 import { createNotesClient } from './notes-client';
 
@@ -20,7 +20,7 @@ export function useLinkedNotes(ref: LinkedNotesRef) {
   const projectId = 'projectId' in ref ? ref.projectId : undefined;
   const taskId = 'taskId' in ref ? ref.taskId : undefined;
 
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [notes, setNotes] = useState<NoteMetadata[]>([]);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>('loading');
 
   useEffect(() => {

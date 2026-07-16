@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { Button } from '../components/ui/button';
 import { useNotes } from './use-notes';
+import { useNoteLinkData } from './use-note-link-data';
 import { NotesList } from './notes-list';
 import { NoteEditor } from './note-editor';
 
@@ -24,11 +25,17 @@ export function NotesPage() {
     reload,
     selectedId,
     select,
+    selectedNote,
+    bodyStatus,
+    reloadSelectedNote,
     createNote,
     applyServerNote,
     updateNote,
     deleteNote,
   } = useNotes();
+
+  // Projects & tasks for the editor's links panel, loaded once here (not per note selection).
+  const { projects, tasks } = useNoteLinkData();
 
   // Route param is the source of truth for selection; fall back to the most-recent note.
   useEffect(() => {
@@ -45,7 +52,6 @@ export function NotesPage() {
   const [deleting, setDeleting] = useState(false);
 
   const activeId = id ?? selectedId;
-  const selected = notes.find((n) => n.id === activeId);
 
   async function handleCreate() {
     const created = await createNote();
@@ -132,12 +138,36 @@ export function NotesPage() {
                 New note
               </Button>
             </div>
+          ) : activeId && bodyStatus === 'loading' ? (
+            <div
+              className="flex flex-1 items-center justify-center p-6 text-center"
+              data-testid="note-body-loading"
+            >
+              <p className="text-sm text-muted-foreground">Loading note…</p>
+            </div>
+          ) : activeId && bodyStatus === 'error' ? (
+            <div
+              role="alert"
+              className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center"
+              data-testid="note-body-error"
+            >
+              <p className="text-sm text-muted-foreground">Could not load this note.</p>
+              <button
+                type="button"
+                onClick={() => reloadSelectedNote()}
+                className="text-sm font-medium text-primary underline"
+              >
+                Retry
+              </button>
+            </div>
           ) : (
             <NoteEditor
-              note={selected}
+              note={selectedNote ?? undefined}
+              projects={projects}
+              tasks={tasks}
               onSave={updateNote}
               onSaved={applyServerNote}
-              onDelete={selected ? (nid) => void handleDelete(nid) : undefined}
+              onDelete={selectedNote ? (nid) => void handleDelete(nid) : undefined}
             />
           )}
         </div>

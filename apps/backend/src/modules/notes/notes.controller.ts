@@ -44,6 +44,26 @@ export class NotesController {
     }
   };
 
+  /**
+   * `GET /notes/:id` → `200` with the full note (metadata + `markdown`), `404` if it is not the
+   * owner's note (or an unknown id — no disclosure). A missing body object resolves to an empty
+   * `markdown`, not a `404` (FR-012), handled in the service.
+   */
+  getOne = async (req: Request, res: Response): Promise<void> => {
+    const userId = NotesController.userId(req, res);
+    if (!userId) return;
+    try {
+      const note = await this.service.getNoteById(userId, req.params.id);
+      if (!note) {
+        res.status(404).json({ error: 'NotFound' });
+        return;
+      }
+      res.status(200).json(note);
+    } catch {
+      res.status(500).json({ error: 'internal_error' });
+    }
+  };
+
   /** `POST /notes` → `201` with the created note (may be empty). */
   create = async (req: Request, res: Response): Promise<void> => {
     const userId = NotesController.userId(req, res);

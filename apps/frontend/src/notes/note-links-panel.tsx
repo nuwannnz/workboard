@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { Note, Project, Task } from '@workboard/shared';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth/use-auth';
-import { createProjectsClient } from '../projects/projects-client';
-import { createTasksClient } from '../week/tasks-client';
 import { InvalidLinkTargetError } from './notes-client';
 import { dedup, resolve } from './note-links';
 import { NoteLinkPicker } from './note-link-picker';
 
 export interface NoteLinksPanelProps {
   note: Note;
+  /** The caller's own projects & tasks, loaded once at NotesPage (see `useNoteLinkData`). */
+  projects: Project[];
+  tasks: Task[];
   onSave: (
     id: string,
     patch: { linkedProjectIds?: string[]; linkedTaskIds?: string[] },
@@ -17,52 +17,21 @@ export interface NoteLinksPanelProps {
   onSaved: (note: Note) => void;
 }
 
-const WIDE_FROM = '0000-01-01';
-const WIDE_TO = '9999-12-31';
-
 /**
- * A note's links panel (contracts §Linking a note, FR-009/FR-010/FR-013/FR-014). Loads the
- * user's own projects & tasks, shows the note's linked projects/tasks **resolved** against that
- * data (stale ids omitted at display time — FR-014), and lets the user add (via the picker) or
- * remove links. Add/remove persist the de-duplicated arrays through `onSave` (the notes update
- * path); a `400 InvalidLinkTarget` reject surfaces a clear "not available" message (US3.1).
+ * A note's links panel (contracts §Linking a note, FR-009/FR-010/FR-013/FR-014). Shows the note's
+ * linked projects/tasks **resolved** against the caller's own projects & tasks (stale ids omitted
+ * at display time — FR-014), and lets the user add (via the picker) or remove links. The
+ * projects/tasks data is loaded once at the page level and passed in (`useNoteLinkData`) so it
+ * isn't re-fetched every time the selected note changes. Add/remove persist the de-duplicated
+ * arrays through `onSave` (the notes update path); a `400 InvalidLinkTarget` reject surfaces a
+ * clear "not available" message (US3.1).
  */
-export function NoteLinksPanel({ note, onSave, onSaved }: NoteLinksPanelProps) {
-  const { apiClient } = useAuth();
+export function NoteLinksPanel({ note, projects, tasks, onSave, onSaved }: NoteLinksPanelProps) {
   const navigate = useNavigate();
-  const projectsClient = useMemo(() => createProjectsClient(apiClient), [apiClient]);
-  const tasksClient = useMemo(() => createTasksClient(apiClient), [apiClient]);
 
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  // Load the caller's own projects & tasks once (their data only — US3.1). Tasks are the union
-  // of scheduled tasks (wide window) and each project's tasks (covers backlog-only tasks).
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const loadedProjects = await projectsClient.listProjects();
-        const scheduled = await tasksClient.listWeek(WIDE_FROM, WIDE_TO);
-        const perProject = await Promise.all(
-          loadedProjects.map((p) => tasksClient.listByProject(p.id)),
-        );
-        if (cancelled) return;
-        const byId = new Map<string, Task>();
-        for (const t of [...scheduled, ...perProject.flat()]) byId.set(t.id, t);
-        setProjects(loadedProjects);
-        setTasks([...byId.values()]);
-      } catch {
-        // A load failure just means the picker/resolution is empty; links still persist.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [projectsClient, tasksClient]);
 
   const linkedProjects = resolve(note.linkedProjectIds, projects);
   const linkedTasks = resolve(note.linkedTaskIds, tasks);

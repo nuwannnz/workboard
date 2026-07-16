@@ -19,6 +19,7 @@ function sampleNote(overrides: Partial<Note> = {}): Note {
     id: 'n1',
     title: '',
     markdown: '',
+    bodyKey: 'users/u1/notes/n1.md',
     linkedProjectIds: [],
     linkedTaskIds: [],
     createdAt: '2026-07-10T00:00:00.000Z',

@@ -33,14 +33,18 @@ npm run local
 
 It orchestrates everything for you:
 
-1. Starts the Docker backing services — **DynamoDB Local** and **cognito-local** (a no-AWS
-   Cognito emulator) via `apps/backend/docker-compose.yml`.
+1. Starts the Docker backing services — **DynamoDB Local**, **cognito-local** (a no-AWS
+   Cognito emulator), and **LocalStack S3** (for note bodies) via `apps/backend/docker-compose.yml`.
 2. Creates the `WorkBoard` DynamoDB table (the container is in-memory, so it's recreated each
    start) — `tools/scripts/bootstrap-dynamo.mjs`.
-3. Seeds a local Cognito user pool + public app client — `tools/scripts/seed-cognito.mjs`.
-4. Writes `apps/backend/.env` and `apps/frontend/.env.local` from the resolved local values
-   (these are git-ignored and regenerated every run — never edit them by hand).
-5. Runs the backend and frontend concurrently with combined logs.
+3. Creates the local notes bucket in LocalStack (ephemeral, recreated each start) —
+   `tools/scripts/bootstrap-s3.mjs`.
+4. Seeds a local Cognito user pool + public app client — `tools/scripts/seed-cognito.mjs`.
+5. Writes `apps/backend/.env` and `apps/frontend/.env.local` from the resolved local values
+   (these are git-ignored and regenerated every run — never edit them by hand). The backend env
+   includes `WORKBOARD_NOTES_BUCKET`, `S3_ENDPOINT`, and `S3_FORCE_PATH_STYLE=true` for the
+   local S3.
+6. Runs the backend and frontend concurrently with combined logs.
 
 | Service | URL | Notes |
 |---------|-----|-------|
@@ -48,6 +52,7 @@ It orchestrates everything for you:
 | Backend (Express) | http://localhost:3000 | proxied from the UI as `/api` |
 | DynamoDB Local | http://localhost:8000 | Docker |
 | cognito-local | http://localhost:9229 | Docker; proxied from the UI as `/cognito` |
+| LocalStack S3 | http://localhost:4566 | Docker; holds note bodies (`users/<uid>/notes/<id>.md`) |
 
 **Prerequisites:** Docker running and `npm install` done once. **No AWS credentials, no deployed
 stack, no real email inbox.**

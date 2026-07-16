@@ -1,4 +1,4 @@
-import type { Note } from '@workboard/shared';
+import type { Note, Project, Task } from '@workboard/shared';
 import { MarkdownEditor } from './markdown-editor';
 import { SaveStatus } from './save-status';
 import { NoteLinksPanel } from './note-links-panel';
@@ -6,6 +6,9 @@ import { useNoteEditor } from './use-note-editor';
 
 export interface NoteEditorProps {
   note: Note | undefined;
+  /** The caller's own projects & tasks (loaded once at NotesPage) for the links panel. */
+  projects: Project[];
+  tasks: Task[];
   /** Persist a content or link patch for the note (wraps `notes-client.updateNote`). */
   onSave: (
     id: string,
@@ -24,7 +27,7 @@ export interface NoteEditorProps {
  * (FR-004/FR-005/FR-006). The title field doubles as rename (US5); the links panel (US3) sits
  * below the body. Shows a defined "no note selected" state when nothing is open.
  */
-export function NoteEditor({ note, onSave, onSaved, onDelete }: NoteEditorProps) {
+export function NoteEditor({ note, projects, tasks, onSave, onSaved, onDelete }: NoteEditorProps) {
   if (!note) {
     return (
       <div
@@ -37,11 +40,26 @@ export function NoteEditor({ note, onSave, onSaved, onDelete }: NoteEditorProps)
   }
   // Keyed on the note id so the editing buffer re-seats cleanly when the selection changes.
   return (
-    <NoteEditorForm key={note.id} note={note} onSave={onSave} onSaved={onSaved} onDelete={onDelete} />
+    <NoteEditorForm
+      key={note.id}
+      note={note}
+      projects={projects}
+      tasks={tasks}
+      onSave={onSave}
+      onSaved={onSaved}
+      onDelete={onDelete}
+    />
   );
 }
 
-function NoteEditorForm({ note, onSave, onSaved, onDelete }: NoteEditorProps & { note: Note }) {
+function NoteEditorForm({
+  note,
+  projects,
+  tasks,
+  onSave,
+  onSaved,
+  onDelete,
+}: NoteEditorProps & { note: Note }) {
   const { title, markdown, status, setTitle, setMarkdown, retry } = useNoteEditor({
     note,
     save: onSave,
@@ -80,7 +98,13 @@ function NoteEditorForm({ note, onSave, onSaved, onDelete }: NoteEditorProps & {
         </div>
 
         <div className="mt-6">
-          <NoteLinksPanel note={note} onSave={onSave} onSaved={onSaved} />
+          <NoteLinksPanel
+            note={note}
+            projects={projects}
+            tasks={tasks}
+            onSave={onSave}
+            onSaved={onSaved}
+          />
         </div>
       </div>
     </div>

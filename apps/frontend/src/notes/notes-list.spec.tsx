@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
-import type { Note } from '@workboard/shared';
+import type { NoteMetadata } from '@workboard/shared';
 import { NotesList } from './notes-list';
 
 afterEach(cleanup);
 
-function note(id: string, title: string): Note {
+function note(id: string, title: string): NoteMetadata {
   return {
     id,
     title,
-    markdown: '',
+    bodyKey: `users/u1/notes/${id}.md`,
     linkedProjectIds: [],
     linkedTaskIds: [],
     createdAt: '2026-07-10T00:00:00.000Z',

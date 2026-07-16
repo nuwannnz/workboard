@@ -1,16 +1,18 @@
 import { z } from 'zod';
 import {
+  noteMetadataSchema,
   noteSchema,
   createNoteSchema,
   updateNoteSchema,
   type Note,
+  type NoteMetadata,
   type CreateNoteInput,
   type UpdateNoteInput,
 } from '@workboard/shared';
 import type { ApiClient } from '../auth/api-client';
 
-/** `GET /notes` envelope (contracts/notes-api.md). */
-const listResponseSchema = z.object({ notes: z.array(noteSchema) });
+/** `GET /notes` envelope — metadata only, no bodies (contracts/notes-api.md, FR-007). */
+const listResponseSchema = z.object({ notes: z.array(noteMetadataSchema) });
 
 const JSON_HEADERS = { 'content-type': 'application/json' } as const;
 
@@ -31,16 +33,17 @@ export class InvalidLinkTargetError extends Error {
  * "that project/task isn't available". Responses are parsed with the shared `noteSchema`.
  */
 export interface NotesClient {
-  listNotes(): Promise<Note[]>;
-  listByLinkedProject(projectId: string): Promise<Note[]>;
-  listByLinkedTask(taskId: string): Promise<Note[]>;
+  listNotes(): Promise<NoteMetadata[]>;
+  listByLinkedProject(projectId: string): Promise<NoteMetadata[]>;
+  listByLinkedTask(taskId: string): Promise<NoteMetadata[]>;
+  getNote(id: string): Promise<Note>;
   createNote(input?: CreateNoteInput): Promise<Note>;
   updateNote(id: string, patch: UpdateNoteInput): Promise<Note>;
   deleteNote(id: string): Promise<void>;
 }
 
 export function createNotesClient(api: ApiClient): NotesClient {
-  async function listWith(query = ''): Promise<Note[]> {
+  async function listWith(query = ''): Promise<NoteMetadata[]> {
     const res = await api.request(`/notes${query}`, { method: 'GET' });
     if (!res.ok) throw new Error(`listNotes failed: ${res.status}`);
     return listResponseSchema.parse(await res.json()).notes;
@@ -49,6 +52,12 @@ export function createNotesClient(api: ApiClient): NotesClient {
   return {
     listNotes() {
       return listWith();
+    },
+
+    async getNote(id) {
+      const res = await api.request(`/notes/${encodeURIComponent(id)}`, { method: 'GET' });
+      if (!res.ok) throw new Error(`getNote failed: ${res.status}`);
+      return noteSchema.parse(await res.json());
     },
 
     listByLinkedProject(projectId) {

@@ -5,6 +5,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
 import type * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import type * as cognito from 'aws-cdk-lib/aws-cognito';
+import type * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 
 const backendEntry = fileURLToPath(new URL('../../backend/src/lambda.ts', import.meta.url));
@@ -13,6 +14,8 @@ const depsLockFilePath = fileURLToPath(new URL('../../../package-lock.json', imp
 export interface ApiStackProps {
   table: dynamodb.ITable;
   userPool: cognito.IUserPool;
+  /** Bucket holding note bodies — the Lambda reads/writes/deletes objects on the user's behalf. */
+  notesBucket: s3.IBucket;
 }
 
 /**
@@ -42,6 +45,7 @@ export class ApiStack extends Construct {
       memorySize: 256,
       environment: {
         WORKBOARD_TABLE_NAME: props.table.tableName,
+        WORKBOARD_NOTES_BUCKET: props.notesBucket.bucketName,
         COGNITO_USER_POOL_ID: props.userPool.userPoolId,
         // Production trusts the gateway-verified claims; no in-process verification.
         AUTH_LOCAL_VERIFY: 'false',
@@ -59,6 +63,9 @@ export class ApiStack extends Construct {
 
     // Repository layer reads/writes go through this Lambda's role.
     props.table.grantReadWriteData(this.handler);
+    // Note bodies are backend-proxied (FR-016): the Lambda role gets read/write/delete on the
+    // notes bucket only (grantReadWrite includes s3:DeleteObject), scoped to this bucket.
+    props.notesBucket.grantReadWrite(this.handler);
 
     this.restApi = new apigateway.RestApi(this, 'BackendApi', {
       restApiName: 'WorkBoardApi',

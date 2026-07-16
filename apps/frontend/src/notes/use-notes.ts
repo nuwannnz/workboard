@@ -1,14 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Note } from '@workboard/shared';
+import type { Note, NoteMetadata } from '@workboard/shared';
 import { useAuth } from '../auth/use-auth';
 import { createNotesClient } from './notes-client';
 
 export type LoadStatus = 'loading' | 'ready' | 'error';
+/** Detail-fetch status for the selected note's body (`GET /notes/:id`). */
+export type BodyStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 /** Recency order: `updatedAt` descending (most-recent first), `id` as a stable tiebreak. */
-function byRecency(a: Note, b: Note): number {
+function byRecency(a: NoteMetadata, b: NoteMetadata): number {
   if (a.updatedAt !== b.updatedAt) return a.updatedAt < b.updatedAt ? 1 : -1;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/** Drop the body so the master list only ever holds metadata (FR-007, US4). */
+function toMetadata(note: Note): NoteMetadata {
+  const { markdown: _markdown, ...meta } = note;
+  return meta;
 }
 
 let tempCounter = 0;
@@ -19,22 +27,28 @@ function nextTempId(): string {
 
 /**
  * Notes list data hook (contracts/notes-client-contract.md §Master-detail surface). Loads the
- * owner's notes on mount, exposes them recency-sorted, tracks the selected note, and provides
- * optimistic mutations with snapshot rollback so a note is never shown as saved when the write
- * failed (FR-006/FR-018). US1 ships load + create + select; US5 layers delete + rename onto the
- * same state. Content auto-save lives in `use-note-editor`, not here.
+ * owner's notes as **metadata only** (bodies live in S3 — FR-007), exposes them recency-sorted,
+ * tracks the selected note, and fetches that note's full body on demand via `getNote(id)` (the
+ * new `GET /notes/:id`). Optimistic create/rename/delete operate on metadata with snapshot
+ * rollback so a note is never shown as saved when the write failed (FR-006/FR-018). Content
+ * auto-save lives in `use-note-editor`, not here.
  */
 export function useNotes() {
   const { apiClient } = useAuth();
   const client = useMemo(() => createNotesClient(apiClient), [apiClient]);
 
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [notes, setNotes] = useState<NoteMetadata[]>([]);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>('loading');
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // The full body-bearing note for the current selection, fetched on demand.
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+  const [bodyStatus, setBodyStatus] = useState<BodyStatus>('idle');
+
   const loadTokenRef = useRef(0);
   const mutationRef = useRef(0);
+  const detailTokenRef = useRef(0);
 
   const load = useCallback(async () => {
     const token = ++loadTokenRef.current;
@@ -64,18 +78,62 @@ export function useNotes() {
   const select = useCallback((id: string | null) => setSelectedId(id), []);
 
   /**
-   * Optimistically create an empty note prepended to the top of the list and immediately
-   * selected (auto-save-first, FR-002). On success the temp note is swapped for the server
-   * note (keeping the selection); on failure it is removed and an error surfaced. Returns the
-   * created note, or `null` on failure.
+   * Fetch the selected note's full body on selection. Skips optimistic temp ids (the note isn't
+   * on the server yet — its full note is seeded directly by `createNote`) and skips a note whose
+   * full body we already hold (e.g. just created). Superseded fetches are ignored via a token so
+   * a rapid selection switch always resolves to the latest note (FR-012 handled server-side).
+   */
+  const fetchSelected = useCallback(
+    (id: string) => {
+      const token = ++detailTokenRef.current;
+      setBodyStatus('loading');
+      client
+        .getNote(id)
+        .then((note) => {
+          if (token !== detailTokenRef.current) return;
+          setSelectedNote(note);
+          setBodyStatus('ready');
+        })
+        .catch(() => {
+          if (token !== detailTokenRef.current) return;
+          setBodyStatus('error');
+        });
+    },
+    [client],
+  );
+
+  useEffect(() => {
+    if (!selectedId || selectedId.startsWith('temp-')) {
+      detailTokenRef.current += 1; // cancel any in-flight fetch
+      setSelectedNote(null);
+      setBodyStatus('idle');
+      return;
+    }
+    if (selectedNote?.id === selectedId) {
+      setBodyStatus('ready'); // already loaded (e.g. freshly created / re-selected)
+      return;
+    }
+    fetchSelected(selectedId);
+  }, [selectedId, selectedNote, fetchSelected]);
+
+  /** Manual retry for the body-load error affordance. */
+  const reloadSelectedNote = useCallback(() => {
+    if (selectedId && !selectedId.startsWith('temp-')) fetchSelected(selectedId);
+  }, [selectedId, fetchSelected]);
+
+  /**
+   * Optimistically create an empty note (metadata) prepended to the top of the list and
+   * immediately selected (auto-save-first, FR-002). On success the temp note is swapped for the
+   * server note (keeping the selection) and its full body seeded so no extra fetch is needed; on
+   * failure it is removed and an error surfaced. Returns the created note, or `null` on failure.
    */
   const createNote = useCallback(async (): Promise<Note | null> => {
     const tempId = nextTempId();
     const now = new Date().toISOString();
-    const optimistic: Note = {
+    const optimistic: NoteMetadata = {
       id: tempId,
       title: '',
-      markdown: '',
+      bodyKey: '',
       linkedProjectIds: [],
       linkedTaskIds: [],
       createdAt: now,
@@ -88,8 +146,11 @@ export function useNotes() {
 
     try {
       const created = await client.createNote();
-      setNotes((prev) => prev.map((n) => (n.id === tempId ? created : n)));
+      setNotes((prev) => prev.map((n) => (n.id === tempId ? toMetadata(created) : n)));
       setSelectedId((cur) => (cur === tempId ? created.id : cur));
+      // Seed the full note so selecting it doesn't trigger a redundant GET /notes/:id.
+      setSelectedNote(created);
+      setBodyStatus('ready');
       return created;
     } catch {
       setNotes((prev) => prev.filter((n) => n.id !== tempId));
@@ -100,11 +161,12 @@ export function useNotes() {
   }, [client]);
 
   /**
-   * Merge a server note back into the list (e.g. after an auto-save from the editor) so the
-   * master list's title/recency stays in sync without a reload.
+   * Merge a server note back into the list (metadata) after an auto-save from the editor so the
+   * master list's title/recency stays in sync without a reload, and refresh the held full note.
    */
   const applyServerNote = useCallback((note: Note) => {
-    setNotes((prev) => prev.map((n) => (n.id === note.id ? note : n)));
+    setNotes((prev) => prev.map((n) => (n.id === note.id ? toMetadata(note) : n)));
+    setSelectedNote((cur) => (cur && cur.id === note.id ? note : cur));
   }, []);
 
   /**
@@ -130,7 +192,7 @@ export function useNotes() {
       setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, title, updatedAt: now } : n)));
       try {
         const updated = await client.updateNote(id, { title });
-        setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+        setNotes((prev) => prev.map((n) => (n.id === id ? toMetadata(updated) : n)));
         return true;
       } catch {
         setNotes(snapshot);
@@ -173,6 +235,9 @@ export function useNotes() {
     reload: load,
     selectedId,
     select,
+    selectedNote,
+    bodyStatus,
+    reloadSelectedNote,
     createNote,
     applyServerNote,
     updateNote,

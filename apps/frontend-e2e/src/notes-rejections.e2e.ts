@@ -95,6 +95,11 @@ test.describe('Notes — cross-user isolation', () => {
     const bNotes = (bList.body as { notes: { id: string }[] }).notes;
     expect(bNotes.some((n) => n.id === aNoteId)).toBe(false);
 
+    // B cannot READ A's note body — GET /notes/:idA resolves as 404 (Scenario G, FR-011/SC-007).
+    // The S3 body key is derived solely from B's own userId, so B can never address A's object.
+    const getForeign = await apiFetch(pageB, `/notes/${aNoteId}`);
+    expect(getForeign.status).toBe(404);
+
     // B cannot modify A's note — a foreign id is 404 with no disclosure.
     const patchForeign = await apiFetch(pageB, `/notes/${aNoteId}`, {
       method: 'PATCH',

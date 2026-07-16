@@ -6,7 +6,7 @@ import {
   UpdateCommand,
   DeleteCommand,
 } from '@aws-sdk/lib-dynamodb';
-import type { Note } from '@workboard/shared';
+import type { NoteMetadata } from '@workboard/shared';
 import { NotesRepository } from './notes.repository';
 
 /**
@@ -90,11 +90,11 @@ function makeRepo() {
   return { repo, store };
 }
 
-function sampleNote(overrides: Partial<Note> = {}): Note {
+function sampleNote(overrides: Partial<NoteMetadata> = {}): NoteMetadata {
   return {
     id: 'n1',
     title: 'A note',
-    markdown: '',
+    bodyKey: 'users/user-A/notes/n1.md',
     linkedProjectIds: [],
     linkedTaskIds: [],
     createdAt: '2026-07-10T00:00:00.000Z',
