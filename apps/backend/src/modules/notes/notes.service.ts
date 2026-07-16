@@ -1,6 +1,7 @@
 import { ulid } from 'ulid';
-import type { CreateNoteInput, Note, UpdateNoteInput } from '@workboard/shared';
+import type { CreateNoteInput, Note, NoteMetadata, UpdateNoteInput } from '@workboard/shared';
 import { NotesRepository } from './notes.repository';
+import { NoteBodyStore } from './note-body.repository';
 import { ProjectsService } from '../projects/projects.service';
 import { TasksService } from '../tasks/tasks.service';
 
@@ -36,48 +37,69 @@ function dedup(ids: string[]): string[] {
 export class NotesService {
   constructor(
     private readonly repo: NotesRepository = new NotesRepository(),
+    private readonly bodyStore: NoteBodyStore = new NoteBodyStore(),
     private readonly projectsService: ProjectsService = new ProjectsService(),
     private readonly tasksService: TasksService = new TasksService(),
   ) {}
 
   /** Sort by `updatedAt` descending (most-recent first), `id` as a stable tiebreak. */
-  private static byRecency(a: Note, b: Note): number {
+  private static byRecency(a: NoteMetadata, b: NoteMetadata): number {
     if (a.updatedAt !== b.updatedAt) return a.updatedAt < b.updatedAt ? 1 : -1;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   }
 
   /**
    * Create a note — may be **empty** (auto-save-first flow, FR-002/FR-008). Assigns a ULID
-   * `id`, defaults title/markdown to `''` and the link arrays to `[]`, and sets timestamps.
+   * `id`, defaults title/markdown to `''` and the link arrays to `[]`, sets timestamps and the
+   * `bodyKey`. Writes the S3 body **first**, then the metadata (FR-004): if the body write fails
+   * the metadata is never created, so the notebook never shows a note whose body is missing
+   * (FR-005/FR-010). Returns the full note (metadata + the just-written body).
    */
   async createNote(userId: string, input: CreateNoteInput): Promise<Note> {
     const now = new Date().toISOString();
-    const note: Note = {
-      id: ulid(),
+    const id = ulid();
+    const markdown = input.markdown ?? '';
+    const metadata: NoteMetadata = {
+      id,
       title: input.title ?? '',
-      markdown: input.markdown ?? '',
       linkedProjectIds: [],
       linkedTaskIds: [],
       createdAt: now,
       updatedAt: now,
+      bodyKey: this.bodyStore.keyFor(userId, id),
     };
-    return this.repo.put(userId, note);
+    // Body-first: a failed PutObject aborts here with no metadata written (FR-004/FR-005).
+    await this.bodyStore.putBody(userId, id, markdown);
+    await this.repo.put(userId, metadata);
+    return { ...metadata, markdown };
   }
 
-  /** List the owner's notes, recency-sorted (`updatedAt` desc, `id` tiebreak). */
-  async listNotes(userId: string): Promise<Note[]> {
+  /**
+   * Fetch one note with its body (`GET /notes/:id`). Reads the ownership-enforced metadata, then
+   * composes the S3 body; a missing body object resolves to `markdown: ''` (FR-012). Returns
+   * `null` for a foreign/unknown id (not-found, no disclosure).
+   */
+  async getNoteById(userId: string, id: string): Promise<Note | null> {
+    const metadata = await this.repo.getById(userId, id);
+    if (!metadata) return null;
+    const markdown = await this.bodyStore.getBody(userId, id);
+    return { ...metadata, markdown };
+  }
+
+  /** List the owner's notes (metadata only), recency-sorted (`updatedAt` desc, `id` tiebreak). */
+  async listNotes(userId: string): Promise<NoteMetadata[]> {
     const notes = await this.repo.list(userId);
     return notes.sort(NotesService.byRecency);
   }
 
   /** Reverse lookup: the owner's notes linked to `projectId` (FR-011, research §2). */
-  async listByLinkedProject(userId: string, projectId: string): Promise<Note[]> {
+  async listByLinkedProject(userId: string, projectId: string): Promise<NoteMetadata[]> {
     const notes = await this.repo.listByLinked(userId, { projectId });
     return notes.sort(NotesService.byRecency);
   }
 
   /** Reverse lookup: the owner's notes linked to `taskId` (FR-011, research §2). */
-  async listByLinkedTask(userId: string, taskId: string): Promise<Note[]> {
+  async listByLinkedTask(userId: string, taskId: string): Promise<NoteMetadata[]> {
     const notes = await this.repo.listByLinked(userId, { taskId });
     return notes.sort(NotesService.byRecency);
   }
@@ -94,10 +116,9 @@ export class NotesService {
    * note, or `null` for a foreign/missing note id (not-found).
    */
   async updateNote(userId: string, id: string, patch: UpdateNoteInput): Promise<Note | null> {
-    const applied: Partial<Note> = { updatedAt: new Date().toISOString() };
+    const applied: Partial<NoteMetadata> = { updatedAt: new Date().toISOString() };
 
     if (patch.title !== undefined) applied.title = patch.title;
-    if (patch.markdown !== undefined) applied.markdown = patch.markdown;
 
     const touchesLinks =
       patch.linkedProjectIds !== undefined || patch.linkedTaskIds !== undefined;
@@ -132,15 +153,42 @@ export class NotesService {
       if (offending.length > 0) throw new InvalidLinkTargetError(offending);
     }
 
-    return this.repo.update(userId, id, applied);
+    // Body-first when the patch carries content: PutObject the body, then bump the metadata
+    // (FR-004). A failed body write aborts before any metadata mutation, so `updatedAt` never
+    // advances past a body we didn't persist (FR-005/FR-010). A metadata-only patch (rename /
+    // link change) skips S3 entirely (research §3).
+    if (patch.markdown !== undefined) {
+      await this.bodyStore.putBody(userId, id, patch.markdown);
+    }
+
+    const metadata = await this.repo.update(userId, id, applied);
+    if (!metadata) return null;
+
+    // Compose the full note: the just-written body for a content patch, else read-through so a
+    // metadata-only patch still returns an honest full note (contracts/notes-api.md PATCH).
+    const markdown =
+      patch.markdown !== undefined ? patch.markdown : await this.bodyStore.getBody(userId, id);
+    return { ...metadata, markdown };
   }
 
   /**
-   * Delete a note; its links vanish with it (nothing else stores them — FR-017), so no cascade
-   * write to projects/tasks. Returns `true` if it existed in the owner's partition, else
-   * `false`. Idempotent under retry.
+   * Delete a note: remove the **metadata first** (ownership-guarded) so the note vanishes
+   * immediately, then best-effort delete its S3 body (FR-008/FR-009). A failed body delete is
+   * caught and logged — never fatal — leaving at worst a harmless orphaned object; the operation
+   * still succeeds. No body delete is attempted when the metadata delete found nothing (foreign/
+   * missing id). Its links vanish with the metadata (nothing else stores them — FR-017), so no
+   * cascade write to projects/tasks. Returns `true` if the note existed in the owner's partition,
+   * else `false`. Idempotent under retry.
    */
   async deleteNote(userId: string, id: string): Promise<boolean> {
-    return this.repo.delete(userId, id);
+    const existed = await this.repo.delete(userId, id);
+    if (!existed) return false;
+    try {
+      await this.bodyStore.deleteBody(userId, id);
+    } catch (err) {
+      // Best-effort cleanup — an orphaned body object is invisible and harmless (FR-009).
+      console.warn(`note body delete failed for note ${id}`, err);
+    }
+    return true;
   }
 }

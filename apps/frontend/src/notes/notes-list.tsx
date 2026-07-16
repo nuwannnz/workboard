@@ -1,18 +1,18 @@
 import { useMemo, useState } from 'react';
-import type { Note } from '@workboard/shared';
+import type { NoteMetadata } from '@workboard/shared';
 import { cn } from '../lib/utils';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 
 export interface NotesListProps {
-  notes: Note[];
+  notes: NoteMetadata[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onCreate: () => void;
 }
 
 /** Display-only placeholder for an empty title (FR-008) — never stored (research §7). */
-export function displayTitle(note: Pick<Note, 'title'>): string {
+export function displayTitle(note: Pick<NoteMetadata, 'title'>): string {
   return note.title.trim() ? note.title : 'Untitled';
 }
 

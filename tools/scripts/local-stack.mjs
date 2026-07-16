@@ -13,6 +13,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { bootstrapDynamo } from './bootstrap-dynamo.mjs';
+import { bootstrapS3 } from './bootstrap-s3.mjs';
 import { seedCognito } from './seed-cognito.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -20,6 +21,8 @@ const COMPOSE_FILE = 'apps/backend/docker-compose.yml';
 const COGNITO_DIR = path.join(ROOT, 'apps/backend/.cognito');
 const DYNAMO_ENDPOINT = 'http://localhost:8000';
 const COGNITO_ENDPOINT = 'http://localhost:9229';
+const S3_ENDPOINT = 'http://localhost:4566';
+const NOTES_BUCKET = 'workboard-notes-local';
 
 function log(msg) {
   console.log(`\x1b[36m[local-stack]\x1b[0m ${msg}`);
@@ -92,11 +95,20 @@ export async function prepareLocalStack() {
   log('starting Docker services (DynamoDB Local + cognito-local)…');
   await run('docker', ['compose', '-f', COMPOSE_FILE, 'up', '-d']);
 
-  log('waiting for DynamoDB Local (:8000) and cognito-local (:9229)…');
-  await Promise.all([waitForPort('localhost', 8000), waitForPort('localhost', 9229)]);
+  log('waiting for DynamoDB Local (:8000), cognito-local (:9229), LocalStack S3 (:4566)…');
+  await Promise.all([
+    waitForPort('localhost', 8000),
+    waitForPort('localhost', 9229),
+    waitForPort('localhost', 4566),
+  ]);
 
   const { tableName, created } = await retry(() => bootstrapDynamo({ endpoint: DYNAMO_ENDPOINT }));
   log(`DynamoDB table "${tableName}" ${created ? 'created' : 'ready'}.`);
+
+  const { bucket, created: bucketCreated } = await retry(() =>
+    bootstrapS3({ endpoint: S3_ENDPOINT, bucket: NOTES_BUCKET }),
+  );
+  log(`LocalStack S3 bucket "${bucket}" ${bucketCreated ? 'created' : 'ready'}.`);
 
   const { userPoolId, clientId, issuer, jwksUri } = await retry(() =>
     seedCognito({ endpoint: COGNITO_ENDPOINT }),
@@ -107,6 +119,9 @@ export async function prepareLocalStack() {
     'AWS_REGION=us-east-1',
     `WORKBOARD_TABLE_NAME=${tableName}`,
     `DYNAMODB_ENDPOINT=${DYNAMO_ENDPOINT}`,
+    `WORKBOARD_NOTES_BUCKET=${bucket}`,
+    `S3_ENDPOINT=${S3_ENDPOINT}`,
+    'S3_FORCE_PATH_STYLE=true',
     'PORT=3000',
     `COGNITO_USER_POOL_ID=${userPoolId}`,
     `COGNITO_CLIENT_ID=${clientId}`,

@@ -116,4 +116,74 @@ test.describe('Notes — end-to-end core flow', () => {
     await page.getByTestId('projects-grid').getByText(projectName).click();
     await expect(page.getByTestId('linked-notes-section').getByTestId('linked-notes-empty')).toBeVisible();
   });
+
+  /**
+   * SC-002 / FR-013: a note body larger than DynamoDB's 400 KB item limit round-trips intact —
+   * impossible while the body lived inline in the metadata item, now that it lives in S3. The
+   * reopen after reload proves the select-to-fetch path (`GET /notes/:id`) returns the full body.
+   */
+  test('large body (>400 KB) round-trips via S3 on reopen', async ({ page }) => {
+    await openNotes(page);
+    await createNote(page);
+
+    await page.getByTestId('note-title').fill('Big note');
+    await waitForNoteWrite(page, 'PATCH');
+
+    // ~540 KB of body — comfortably past the 400 KB DynamoDB item ceiling. insertText dispatches
+    // one input event (fast), unlike char-by-char typing. A unique end marker anchors the assert.
+    const marker = `END_${Date.now()}`;
+    const big = 'lorem ipsum dolor '.repeat(30_000); // ≈ 540 KB
+    await page.getByTestId('markdown-editor-surface').click();
+    await page.keyboard.insertText(`${big}${marker}`);
+    await waitForNoteWrite(page, 'PATCH');
+    await expect(page.getByTestId('save-status')).toHaveAttribute('data-status', 'saved');
+
+    // Reopening the deep-linked note issues GET /notes/:id, which reads the body from S3.
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.request().method() === 'GET' && /\/notes\/[^/?]+$/.test(r.url()) && r.ok(),
+      ),
+      page.reload(),
+    ]);
+    await expect(page.getByTestId('note-title')).toHaveValue('Big note');
+    await expect(page.getByTestId('markdown-editor-surface')).toContainText(marker, {
+      timeout: 15_000,
+    });
+  });
+
+  /**
+   * US3 / SC-005: deleting a note removes it from the list and a subsequent open of its deep link
+   * returns `404` (metadata gone), degrading to the body-error state rather than a stale editor.
+   */
+  test('delete removes the note; reopening its deep link 404s', async ({ page }) => {
+    await openNotes(page);
+    await createNote(page);
+    await expect(page).toHaveURL(/\/notes\/[^/]+$/);
+    const noteId = page.url().split('/notes/')[1];
+
+    await page.getByTestId('note-title').fill('Doomed');
+    await waitForNoteWrite(page, 'PATCH');
+
+    // Delete with the confirm dialog.
+    await page.getByTestId('delete-note').click();
+    await Promise.all([
+      waitForNoteWrite(page, 'DELETE'),
+      page.getByTestId('confirm-delete-note').click(),
+    ]);
+    await expect(page.getByTestId('note-list-item').filter({ hasText: 'Doomed' })).toHaveCount(0);
+
+    // Reopening the deleted note's deep link fetches GET /notes/:id → 404; the deleted note's
+    // editor never loads (with no notes left, the notebook shows its empty state).
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.request().method() === 'GET' &&
+          r.url().includes(`/notes/${noteId}`) &&
+          r.status() === 404,
+      ),
+      page.goto(`/notes/${noteId}`),
+    ]);
+    await expect(page.getByTestId('note-editor')).toHaveCount(0);
+  });
 });

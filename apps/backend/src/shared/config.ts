@@ -7,6 +7,12 @@ export interface AppConfig {
   tableName: string;
   /** Optional endpoint override for DynamoDB Local in development. */
   dynamoEndpoint?: string;
+  /** S3 bucket holding each note's Markdown body (CDK `NotesBucketName` output). */
+  notesBucket?: string;
+  /** Optional endpoint override for LocalStack S3 in development. */
+  s3Endpoint?: string;
+  /** Path-style S3 addressing — required by LocalStack; false/unset in AWS. */
+  s3ForcePathStyle: boolean;
   port: number;
   /** Cognito user pool id (CDK output) — used by the resend helper + local verifier. */
   cognitoUserPoolId?: string;
@@ -33,6 +39,9 @@ export function loadConfig(): AppConfig {
     region: process.env.AWS_REGION ?? 'us-east-1',
     tableName: process.env.WORKBOARD_TABLE_NAME ?? 'WorkBoard',
     dynamoEndpoint: process.env.DYNAMODB_ENDPOINT || undefined,
+    notesBucket: process.env.WORKBOARD_NOTES_BUCKET || undefined,
+    s3Endpoint: process.env.S3_ENDPOINT || undefined,
+    s3ForcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
     port: Number(process.env.PORT ?? 3000),
     cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID || undefined,
     cognitoClientId: process.env.COGNITO_CLIENT_ID || undefined,

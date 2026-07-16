@@ -14,6 +14,8 @@ export function notesRoutes(
   const router = Router();
   router.use(authenticate, resolveIdentity);
   router.get('/notes', controller.list);
+  // `/notes/:id` is registered after the static `/notes` list so it never shadows it.
+  router.get('/notes/:id', controller.getOne);
   router.post('/notes', controller.create);
   router.patch('/notes/:id', controller.update);
   router.delete('/notes/:id', controller.remove);

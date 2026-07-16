@@ -30,3 +30,23 @@ services:
     volumes:
       # Persists the seeded pool/client + users across restarts.
       - ./.cognito:/app/.cognito
+
+  # LocalStack (S3 only) — a no-AWS emulator of the notes body bucket so note-body
+  # PutObject/GetObject/DeleteObject work fully offline, mirroring the DynamoDB Local +
+  # cognito-local story. The local notes bucket is created on startup by
+  # tools/scripts/bootstrap-s3.mjs (invoked from `npm run local` / the e2e local stack).
+  # Runs with `-inMemory`-equivalent ephemeral storage — the bucket is recreated each start.
+  localstack:
+    image: localstack/localstack:latest
+    container_name: workboard-localstack
+    ports:
+      - '4566:4566'
+    environment:
+      # Only S3 is needed; keep the emulator lean.
+      - SERVICES=s3
+      - DEBUG=0
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -s http://localhost:4566/_localstack/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5

@@ -20,9 +20,9 @@ describe('WorkboardStack', () => {
   });
 
   it('provisions the backend Lambda and API Gateway', () => {
-    // With the web-hosting construct gone, the only function left is the Express
-    // backend Lambda (no more bucket auto-delete / BucketDeployment helpers).
-    template.resourceCountIs('AWS::Lambda::Function', 1);
+    // Two functions now: the Express backend Lambda and the CDK-generated
+    // custom-resource provider for the notes bucket's autoDeleteObjects.
+    template.resourceCountIs('AWS::Lambda::Function', 2);
     template.hasResourceProperties('AWS::Lambda::Function', {
       Runtime: 'nodejs22.x',
       Handler: 'index.handler',
@@ -30,9 +30,24 @@ describe('WorkboardStack', () => {
     template.resourceCountIs('AWS::ApiGateway::RestApi', 1);
   });
 
-  it('hosts no frontend on AWS — Vercel serves it (no CloudFront, no web bucket)', () => {
+  it('provisions exactly one private S3 bucket for note bodies (no frontend hosting on AWS)', () => {
+    // The frontend is served by Vercel — no CloudFront, no web bucket. The only bucket
+    // is the notes body store: all public access blocked, SSE-S3 at rest.
     template.resourceCountIs('AWS::CloudFront::Distribution', 0);
-    template.resourceCountIs('AWS::S3::Bucket', 0);
+    template.resourceCountIs('AWS::S3::Bucket', 1);
+    template.hasResourceProperties('AWS::S3::Bucket', {
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: true,
+        BlockPublicPolicy: true,
+        IgnorePublicAcls: true,
+        RestrictPublicBuckets: true,
+      },
+      BucketEncryption: {
+        ServerSideEncryptionConfiguration: [
+          { ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } },
+        ],
+      },
+    });
   });
 
   it('enables CORS preflight on the API so the Vercel-hosted SPA can call it', () => {

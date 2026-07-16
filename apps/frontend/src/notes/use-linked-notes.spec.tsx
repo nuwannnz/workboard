@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { ReactNode } from 'react';
 import { renderHook, cleanup, waitFor } from '@testing-library/react';
-import type { Note } from '@workboard/shared';
+import type { NoteMetadata } from '@workboard/shared';
 import { AuthContext, type AuthApi } from '../auth/auth-context';
 import type { ApiClient } from '../auth/api-client';
 import { useLinkedNotes } from './use-linked-notes';
@@ -13,7 +13,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 /** Records the GET paths so the test can assert the reverse query, and replies per path. */
-function mockAuth(byPath: (path: string) => Note[]): { auth: AuthApi; paths: string[] } {
+function mockAuth(byPath: (path: string) => NoteMetadata[]): { auth: AuthApi; paths: string[] } {
   const paths: string[] = [];
   const apiClient: ApiClient = {
     async request(path) {
@@ -44,11 +44,11 @@ function wrapper(auth: AuthApi) {
   );
 }
 
-function note(id: string): Note {
+function note(id: string): NoteMetadata {
   return {
     id,
     title: id,
-    markdown: '',
+    bodyKey: `users/u1/notes/${id}.md`,
     linkedProjectIds: [],
     linkedTaskIds: [],
     createdAt: '2026-07-10T00:00:00.000Z',
