@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Request, Response } from 'express';
+import { getCurrentInvoke } from '@codegenie/serverless-express';
 import { createAuthenticate, type TokenVerifier } from './authenticate';
+
+// The production path reads the Cognito authorizer's claims from the Lambda invocation
+// event via `getCurrentInvoke()`. Mock it: `{}` (no invoke) outside the gateway-claims test.
+vi.mock('@codegenie/serverless-express', () => ({
+  getCurrentInvoke: vi.fn(() => ({})),
+}));
+const mockedGetCurrentInvoke = vi.mocked(getCurrentInvoke);
 
 /**
  * Tests for the authenticate middleware (contracts/auth-api.md):
@@ -21,11 +29,11 @@ function mockRes() {
   return res;
 }
 
-function reqWithClaims(claims: Record<string, string>): Request {
-  return {
-    headers: {},
-    apiGateway: { event: { requestContext: { authorizer: { claims } } } },
-  } as unknown as Request;
+/** Simulate a Lambda invocation whose Cognito authorizer forwarded these claims. */
+function withGatewayClaims(claims: Record<string, string>): void {
+  mockedGetCurrentInvoke.mockReturnValue({
+    event: { requestContext: { authorizer: { claims } } },
+  } as unknown as ReturnType<typeof getCurrentInvoke>);
 }
 
 function reqWithHeader(authorization?: string): Request {
@@ -36,6 +44,8 @@ describe('authenticate middleware', () => {
   const OLD_ENV = process.env;
   beforeEach(() => {
     process.env = { ...OLD_ENV };
+    // Default: not inside a gateway invocation (local/unit path).
+    mockedGetCurrentInvoke.mockReturnValue({} as ReturnType<typeof getCurrentInvoke>);
   });
   afterEach(() => {
     process.env = OLD_ENV;
@@ -44,11 +54,12 @@ describe('authenticate middleware', () => {
 
   it('(a) populates req.auth from gateway-verified claims and calls next', async () => {
     const authenticate = createAuthenticate();
-    const req = reqWithClaims({
+    withGatewayClaims({
       sub: 'sub-123',
       email: 'user@example.com',
       'cognito:username': 'user@example.com',
     });
+    const req = reqWithHeader();
     const res = mockRes();
     const next = vi.fn();
 

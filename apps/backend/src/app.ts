@@ -6,6 +6,7 @@ import { projectsRoutes } from './modules/projects/projects.routes';
 import { notesRoutes } from './modules/notes/notes.routes';
 import { authenticate } from './middleware/authenticate';
 import { resolveIdentity } from './middleware/resolve-identity';
+import { cors } from './middleware/cors';
 
 /**
  * Express app factory (FR-008). Both entry points — the local server (`main.ts`)
@@ -14,6 +15,7 @@ import { resolveIdentity } from './middleware/resolve-identity';
  */
 export function createApp(): Express {
   const app = express();
+  app.use(cors());
   // Note bodies are Markdown carried inline in the request JSON and are no longer bounded by
   // DynamoDB's 400 KB item limit now that they live in S3 (FR-013). Raise the body-parser cap
   // from its 100 KB default so large notes aren't rejected with `413 PayloadTooLarge`; keep it
